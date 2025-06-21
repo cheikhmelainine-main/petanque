@@ -1,0 +1,120 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ENUMS
+
+enum TournamentType {
+  GROUP
+  SWISS
+  MARATHON
+}
+
+enum TournamentStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+}
+
+enum TeamFormat {
+  SINGLES
+  DOUBLES
+  TRIPLETS
+}
+
+enum MatchStatus {
+  PENDING
+  ONGOING
+  COMPLETED
+}
+
+enum RoundType {
+  WINNERS
+  LOSERS
+  GROUP
+  FINAL
+  KNOCKOUT
+}
+
+// MODELS
+
+model User {
+  id          Int          @id @default(autoincrement())
+  email       String       @unique
+  password    String
+  role        String // e.g., "admin", "arbiter"
+  createdAt   DateTime     @default(now())
+  tournaments Tournament[]
+}
+
+model Tournament {
+  id          Int              @id @default(autoincrement())
+  name        String
+  type        TournamentType
+  format      TeamFormat
+  status      TournamentStatus @default(UPCOMING)
+  rounds      Int?
+  startDate   DateTime
+  endDate     DateTime?
+  createdAt   DateTime         @default(now())
+  createdById Int
+  createdBy   User             @relation(fields: [createdById], references: [id])
+  teams       Team[]
+  matches     Match[]
+}
+
+model Team {
+  id           Int          @id @default(autoincrement())
+  name         String
+  tournamentId Int
+  tournament   Tournament   @relation(fields: [tournamentId], references: [id])
+  members      TeamMember[]
+  groupNumber  Int? 
+  createdAt    DateTime     @default(now())
+  points       Int          @default(0) // total points (for swiss/group)
+  scoreDiff    Int          @default(0) // score difference (for swiss/group)
+
+  homeMatches Match[] @relation("team1")
+  awayMatches Match[] @relation("team2")
+}
+
+model TeamMember {
+  id     Int    @id @default(autoincrement())
+  name   String
+  teamId Int
+  team   Team   @relation(fields: [teamId], references: [id])
+  // Validation for number of members per team is handled in backend logic
+}
+
+model Match {
+  id           Int         @id @default(autoincrement())
+  tournamentId Int
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id])
+  round        Int
+  roundType    RoundType
+  groupNumber  Int? // for group system matches
+  team1Id      Int
+  team1        Team        @relation("team1", fields: [team1Id], references: [id])
+  team2Id      Int?
+  team2        Team?       @relation("team2", fields: [team2Id], references: [id])
+  team1Score   Int?
+  team2Score   Int?
+  winnerTeamId Int? // nullable, to be set when match completes
+  status       MatchStatus @default(PENDING)
+  startedAt    DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime    @default(now())
+}
+
