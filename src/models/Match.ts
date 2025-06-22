@@ -1,138 +1,88 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-export interface IMatch extends mongoose.Document {
-  tournament: mongoose.Types.ObjectId;
-  team1: mongoose.Types.ObjectId;
-  team2: mongoose.Types.ObjectId;
-  round: number;
-  groupId?: mongoose.Types.ObjectId;
-  bracketType?: 'winners' | 'losers';
-  
-  // Scores
-  score1: number;
-  score2: number;
-  
-  // Statut du match
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
-  
-  // Gestion du temps
-  timeLimit?: number; // en minutes
-  startTime?: Date;
-  endTime?: Date;
-  timeExpired: boolean;
-  
-  // Points attribués (pour le système suisse/marathon)
-  pointsTeam1: number; // 3 points si victoire avant limite temps, 2 points si victoire après limite, 1 point si nul
-  pointsTeam2: number;
-  
-  // Résultat
-  winner?: mongoose.Types.ObjectId;
-  isDraw: boolean;
-  
-  // Match suivant (pour les brackets)
-  nextMatch?: mongoose.Types.ObjectId;
-  
-  // Métadonnées
-  createdAt: Date;
-  updatedAt: Date;
+export enum MatchStatus {
+  PENDING = 'PENDING',
+  ONGOING = 'ONGOING',
+  COMPLETED = 'COMPLETED'
 }
 
-const matchSchema = new mongoose.Schema<IMatch>({
-  tournament: {
-    type: mongoose.Schema.Types.ObjectId,
+export enum RoundType {
+  SWISS = 'SWISS',
+  WINNERS = 'WINNERS',
+  LOSERS = 'LOSERS',
+  GROUP = 'GROUP',
+  FINAL = 'FINAL',
+  KNOCKOUT = 'KNOCKOUT'
+}
+
+export interface IMatch extends Document {
+  tournamentId: mongoose.Types.ObjectId;
+  round: number;
+  roundType: RoundType;
+  groupNumber?: number;
+  team1Id: mongoose.Types.ObjectId;
+  team2Id?: mongoose.Types.ObjectId;
+  team1Score?: number;
+  team2Score?: number;
+  winnerTeamId?: mongoose.Types.ObjectId;
+  status: MatchStatus;
+  startedAt?: Date;
+  endedAt?: Date;
+  createdAt: Date;
+}
+
+const matchSchema = new Schema<IMatch>({
+  tournamentId: {
+    type: Schema.Types.ObjectId,
     ref: 'Tournament',
-    required: true
-  },
-  team1: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Team',
-    required: true
-  },
-  team2: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Team',
     required: true
   },
   round: {
     type: Number,
-    required: true,
-    min: 1
+    required: true
   },
-  groupId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Group'
-  },
-  bracketType: {
+  roundType: {
     type: String,
-    enum: ['winners', 'losers']
+    enum: Object.values(RoundType),
+    required: true
   },
-  score1: {
-    type: Number,
-    default: 0,
-    min: 0
+  groupNumber: {
+    type: Number
   },
-  score2: {
-    type: Number,
-    default: 0,
-    min: 0
+  team1Id: {
+    type: Schema.Types.ObjectId,
+    ref: 'Team',
+    required: true
+  },
+  team2Id: {
+    type: Schema.Types.ObjectId,
+    ref: 'Team'
+  },
+  team1Score: {
+    type: Number
+  },
+  team2Score: {
+    type: Number
+  },
+  winnerTeamId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Team'
   },
   status: {
     type: String,
-    enum: ['scheduled', 'in_progress', 'completed', 'cancelled'],
-    default: 'scheduled'
+    enum: Object.values(MatchStatus),
+    default: MatchStatus.PENDING
   },
-  timeLimit: {
-    type: Number,
-    min: 30,
-    max: 120
+  startedAt: {
+    type: Date
   },
-  startTime: Date,
-  endTime: Date,
-  timeExpired: {
-    type: Boolean,
-    default: false
-  },
-  pointsTeam1: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 3
-  },
-  pointsTeam2: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 3
-  },
-  winner: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Team'
-  },
-  isDraw: {
-    type: Boolean,
-    default: false
-  },
-  nextMatch: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Match'
+  endedAt: {
+    type: Date
   },
   createdAt: {
     type: Date,
     default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
-}, {
-  timestamps: true
 });
-
-// Index pour optimiser les requêtes
-matchSchema.index({ tournament: 1, round: 1 });
-matchSchema.index({ tournament: 1, status: 1 });
-matchSchema.index({ groupId: 1 });
-matchSchema.index({ team1: 1 });
-matchSchema.index({ team2: 1 });
 
 export default mongoose.models.Match || mongoose.model<IMatch>('Match', matchSchema); 

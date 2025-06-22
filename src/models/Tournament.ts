@@ -1,86 +1,74 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-export interface ITournament extends mongoose.Document {
-  name: string;
-  description: string;
-  startDate: Date;
-  endDate: Date;
-  maxParticipants: number;
-  currentParticipants: number;
-  status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
-  location: string;
-  entryFee: number;
-  prize: string;
-  createdBy: mongoose.Types.ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
+export enum TournamentType {
+  GROUP = 'GROUP',
+  SWISS = 'SWISS', 
+  MARATHON = 'MARATHON'
 }
 
-const TournamentSchema = new mongoose.Schema({
+export enum TournamentStatus {
+  UPCOMING = 'UPCOMING',
+  ONGOING = 'ONGOING',
+  COMPLETED = 'COMPLETED'
+}
+
+export enum TeamFormat {
+  SINGLES = 'SINGLES',
+  DOUBLES = 'DOUBLES',
+  TRIPLETS = 'TRIPLETS'
+}
+
+export interface ITournament extends Document {
+  name: string;
+  type: TournamentType;
+  format: TeamFormat;
+  status: TournamentStatus;
+  rounds?: number;
+  startDate: Date;
+  endDate?: Date;
+  createdAt: Date;
+  createdById: mongoose.Types.ObjectId;
+}
+
+const tournamentSchema = new Schema<ITournament>({
   name: {
     type: String,
-    required: [true, 'Le nom du tournoi est requis'],
-    trim: true,
-    maxlength: [100, 'Le nom ne peut pas dépasser 100 caractères']
+    required: true
   },
-  description: {
+  type: {
     type: String,
-    required: [true, 'La description est requise'],
-    trim: true,
-    maxlength: [500, 'La description ne peut pas dépasser 500 caractères']
+    enum: Object.values(TournamentType),
+    required: true
   },
-  startDate: {
-    type: Date,
-    required: [true, 'La date de début est requise']
-  },
-  endDate: {
-    type: Date,
-    required: [true, 'La date de fin est requise'],
-    validate: {
-      validator: function(this: ITournament, value: Date) {
-        return value > this.startDate
-      },
-      message: 'La date de fin doit être après la date de début'
-    }
-  },
-  maxParticipants: {
-    type: Number,
-    required: [true, 'Le nombre maximum de participants est requis'],
-    min: [2, 'Il faut au moins 2 participants'],
-    max: [64, 'Maximum 64 participants']
-  },
-  currentParticipants: {
-    type: Number,
-    default: 0,
-    min: [0, 'Le nombre de participants ne peut pas être négatif']
+  format: {
+    type: String,
+    enum: Object.values(TeamFormat),
+    required: true
   },
   status: {
     type: String,
-    enum: ['upcoming', 'ongoing', 'completed', 'cancelled'],
-    default: 'upcoming'
+    enum: Object.values(TournamentStatus),
+    default: TournamentStatus.UPCOMING
   },
-  location: {
-    type: String,
-    required: [true, 'Le lieu est requis'],
-    trim: true
+  rounds: {
+    type: Number
   },
-  entryFee: {
-    type: Number,
-    default: 0,
-    min: [0, 'Les frais d\'inscription ne peuvent pas être négatifs']
+  startDate: {
+    type: Date,
+    required: true
   },
-  prize: {
-    type: String,
-    trim: true,
-    default: ''
+  endDate: {
+    type: Date
   },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  createdById: {
+    type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
   }
-}, {
-  timestamps: true
 });
 
-export default mongoose.models.Tournament || mongoose.model<ITournament>('Tournament', TournamentSchema); 
+export default mongoose.models.Tournament || mongoose.model<ITournament>('Tournament', tournamentSchema); 

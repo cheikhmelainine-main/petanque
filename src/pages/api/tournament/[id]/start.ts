@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { TournamentService } from '../../../../services/TournamentService';
+import connectDB from '../../../../lib/mongodb';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -7,22 +8,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    await connectDB();
+    
     const { id } = req.query;
 
     if (!id || typeof id !== 'string') {
       return res.status(400).json({ message: 'ID du tournoi requis' });
     }
 
-    const tournament = await TournamentService.nextRound(id);
+    const tournament = await TournamentService.startTournament(id);
     
     return res.status(200).json({
-      message: 'Tour suivant généré avec succès',
+      message: 'Tournoi démarré avec succès',
       tournament
     });
   } catch (error: any) {
-    console.error('Erreur tour suivant:', error);
+    console.error('Erreur démarrage tournoi:', error);
     return res.status(500).json({ 
-      message: error.message || 'Erreur lors du passage au tour suivant' 
+      message: error.message || 'Erreur lors du démarrage du tournoi' 
     });
   }
 } 

@@ -2,23 +2,14 @@ import mongoose from 'mongoose'
 import bcrypt from 'bcryptjs'
 
 export interface IUser extends mongoose.Document {
-  username: string
   email: string
   password: string
+  role: string
   createdAt: Date
-  updatedAt: Date
   comparePassword(candidatePassword: string): Promise<boolean>
 }
 
 const UserSchema = new mongoose.Schema<IUser>({
-  username: {
-    type: String,
-    required: [true, 'Username est requis'],
-    unique: true,
-    trim: true,
-    minlength: [3, 'Username doit avoir au moins 3 caractères'],
-    maxlength: [20, 'Username ne peut pas dépasser 20 caractères']
-  },
   email: {
     type: String,
     required: [true, 'Email est requis'],
@@ -31,9 +22,15 @@ const UserSchema = new mongoose.Schema<IUser>({
     type: String,
     required: [true, 'Mot de passe est requis'],
     minlength: [6, 'Le mot de passe doit avoir au moins 6 caractères']
+  },
+  role: {
+    type: String,
+    required: [true, 'Rôle est requis']
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
-}, {
-  timestamps: true
 })
 
 // Hash le mot de passe avant de sauvegarder

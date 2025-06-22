@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Ce backend complet permet de gérer des tournois de pétanque avec trois types de formats différents :
+Backend simplifié pour gérer des tournois de pétanque avec MongoDB et Mongoose selon le schéma fourni :
 
 ### 🏆 Types de Tournois Supportés
 

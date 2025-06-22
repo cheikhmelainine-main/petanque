@@ -1,0 +1,456 @@
+{
+  "info": {
+    "name": "Petanque Tournament API",
+    "description": "Collection complète pour tester l'API des tournois de pétanque",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api"
+    },
+    {
+      "key": "tournamentId",
+      "value": ""
+    },
+    {
+      "key": "teamId",
+      "value": ""
+    },
+    {
+      "key": "matchId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": "507f1f77bcf86cd799439011"
+    }
+  ],
+  "item": [
+    {
+      "name": "Tournaments",
+      "item": [
+        {
+          "name": "Create Tournament - SWISS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('tournamentId', response._id);",
+                  "    console.log('Tournament ID saved:', response._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Championnat Suisse 2024\",\n  \"type\": \"SWISS\",\n  \"format\": \"DOUBLES\",\n  \"rounds\": 4,\n  \"startDate\": \"2024-01-15T10:00:00.000Z\",\n  \"createdById\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tournaments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournaments"]
+            }
+          }
+        },
+        {
+          "name": "Create Tournament - GROUP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tournoi par Groupes 2024\",\n  \"type\": \"GROUP\",\n  \"format\": \"TRIPLETS\",\n  \"startDate\": \"2024-02-01T14:00:00.000Z\",\n  \"createdById\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tournaments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournaments"]
+            }
+          }
+        },
+        {
+          "name": "Create Tournament - MARATHON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Marathon Pétanque 2024\",\n  \"type\": \"MARATHON\",\n  \"format\": \"SINGLES\",\n  \"rounds\": 5,\n  \"startDate\": \"2024-03-01T09:00:00.000Z\",\n  \"createdById\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tournaments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournaments"]
+            }
+          }
+        },
+        {
+          "name": "Get All Tournaments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tournaments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournaments"]
+            }
+          }
+        },
+        {
+          "name": "Start Tournament",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/tournament/{{tournamentId}}/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournament", "{{tournamentId}}", "start"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teams",
+      "item": [
+        {
+          "name": "Add Team - Doubles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('teamId', response._id);",
+                  "    console.log('Team ID saved:', response._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Les Champions\",\n  \"tournamentId\": \"{{tournamentId}}\",\n  \"memberNames\": [\"Jean Dupont\", \"Marie Martin\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"]
+            }
+          }
+        },
+        {
+          "name": "Add Team - Les Pros",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Les Pros\",\n  \"tournamentId\": \"{{tournamentId}}\",\n  \"memberNames\": [\"Pierre Durand\", \"Sophie Leblanc\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"]
+            }
+          }
+        },
+        {
+          "name": "Add Team - Team Alpha",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Team Alpha\",\n  \"tournamentId\": \"{{tournamentId}}\",\n  \"memberNames\": [\"Alex Bernard\", \"Julie Rousseau\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"]
+            }
+          }
+        },
+        {
+          "name": "Add Team - Team Beta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Team Beta\",\n  \"tournamentId\": \"{{tournamentId}}\",\n  \"memberNames\": [\"Thomas Villa\", \"Emma Moreau\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"]
+            }
+          }
+        },
+        {
+          "name": "Get Teams by Tournament",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/teams?tournamentId={{tournamentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"],
+              "query": [
+                {
+                  "key": "tournamentId",
+                  "value": "{{tournamentId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Teams",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Matches",
+      "item": [
+        {
+          "name": "Get Matches by Tournament",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.length > 0) {",
+                  "        pm.collectionVariables.set('matchId', response[0]._id);",
+                  "        console.log('First Match ID saved:', response[0]._id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/matches?tournamentId={{tournamentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches"],
+              "query": [
+                {
+                  "key": "tournamentId",
+                  "value": "{{tournamentId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Matches by Round",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/matches?tournamentId={{tournamentId}}&round=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches"],
+              "query": [
+                {
+                  "key": "tournamentId",
+                  "value": "{{tournamentId}}"
+                },
+                {
+                  "key": "round",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start Match",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"start\",\n  \"matchId\": \"{{matchId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/matches",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches"]
+            }
+          }
+        },
+        {
+          "name": "Update Match Score - Win",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update_score\",\n  \"matchId\": \"{{matchId}}\",\n  \"team1Score\": 13,\n  \"team2Score\": 8\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/matches",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches"]
+            }
+          }
+        },
+        {
+          "name": "Update Match Score - Close Game",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update_score\",\n  \"matchId\": \"{{matchId}}\",\n  \"team1Score\": 13,\n  \"team2Score\": 12\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/matches",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error Tests",
+      "item": [
+        {
+          "name": "Invalid Tournament Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"type\": \"INVALID\",\n  \"format\": \"INVALID\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tournaments",
+              "host": ["{{baseUrl}}"],
+              "path": ["tournaments"]
+            }
+          }
+        },
+        {
+          "name": "Invalid Team Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"tournamentId\": \"invalid-id\",\n  \"memberNames\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["teams"]
+            }
+          }
+        },
+        {
+          "name": "Invalid Match Update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"invalid_action\",\n  \"matchId\": \"invalid-id\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/matches",
+              "host": ["{{baseUrl}}"],
+              "path": ["matches"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+} 

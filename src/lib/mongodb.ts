@@ -1,34 +1,45 @@
-import { MongoClient } from 'mongodb'
+import mongoose from 'mongoose';
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Invalid/Missing environment variable: "MONGODB_URI"')
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error('Veuillez définir la variable d\'environnement MONGODB_URI dans .env.local');
 }
 
-const uri = process.env.MONGODB_URI
-const options = {}
+/**
+ * Global is used here to maintain a cached connection across hot reloads
+ * in development. This prevents connections growing exponentially
+ * during API Route usage.
+ */
+let cached = (global as any).mongoose;
 
-let client: MongoClient
-let clientPromise: Promise<MongoClient>
-
-// Étendre l'interface global pour TypeScript
-declare global {
-  // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined
+if (!cached) {
+  cached = (global as any).mongoose = { conn: null, promise: null };
 }
 
-if (process.env.NODE_ENV === 'development') {
-  // En développement, utiliser une variable globale pour que la valeur
-  // soit préservée à travers les rechargements de modules HMR
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options)
-    global._mongoClientPromise = client.connect()
+async function connectDB() {
+  if (cached.conn) {
+    return cached.conn;
   }
-  clientPromise = global._mongoClientPromise
-} else {
-  // En production, il est préférable de ne pas utiliser une variable globale
-  client = new MongoClient(uri, options)
-  clientPromise = client.connect()
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+    };
+
+    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
+      return mongoose;
+    });
+  }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
+
+  return cached.conn;
 }
 
-// Exporter une Promise MongoClient singleton
-export default clientPromise 
+export default connectDB; 
