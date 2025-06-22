@@ -382,11 +382,240 @@ export class TournamentService {
       throw new Error('Pas assez d\'équipes qualifiées pour commencer les phases éliminatoires');
     }
 
-    // Créer le bracket winners et losers
+    // Créer le bracket winners et losers (pour l'ancien système)
+    // Cette méthode est conservée pour la compatibilité avec l'ancien système knockout
     await this.generateWinnersAndLosersBrackets(tournamentId, qualifiedTeams);
   }
 
-  // Générer les brackets winners et losers
+  // NOUVELLE MÉTHODE : Gérer les qualifications post-poules avec tirage au sort
+  static async generateQualificationPhase(tournamentId: string): Promise<{ qualifiedTeams: ITeam[], eliminationMatches: IMatch[] }> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    // Vérifier que toutes les poules sont terminées
+    const groupsCount = tournament.groupsCount || 0;
+    const allGroupsCompleted = await this.checkAllGroupsCompleted(tournamentId, groupsCount);
+    
+    if (!allGroupsCompleted) {
+      throw new Error('Toutes les poules doivent être terminées avant de lancer les qualifications');
+    }
+
+    // Récupérer le classement de tous les groupes
+    const groupsRanking = await this.getGroupTournamentRanking(tournamentId);
+    
+    // Qualifier automatiquement les 2 premières équipes de chaque groupe
+    const qualifiedTeams: ITeam[] = [];
+    const qualificationsByGroup = new Map<number, ITeam[]>();
+
+    for (const group of groupsRanking) {
+      const topTeams = group.teams.slice(0, 2); // Les 2 premières équipes
+      
+      // Marquer les équipes comme qualifiées
+      for (let i = 0; i < topTeams.length; i++) {
+        const team = topTeams[i];
+        await Team.findByIdAndUpdate(team._id, {
+          isQualified: true,
+          qualificationRank: i + 1
+        });
+        
+        const qualifiedTeam = {
+          ...team,
+          originalGroup: group.groupNumber,
+          qualificationRank: i + 1
+        };
+        
+        qualifiedTeams.push(qualifiedTeam);
+        
+        // Stocker par groupe pour la contrainte
+        if (!qualificationsByGroup.has(group.groupNumber)) {
+          qualificationsByGroup.set(group.groupNumber, []);
+        }
+        qualificationsByGroup.get(group.groupNumber)!.push(qualifiedTeam);
+      }
+    }
+
+    console.log(`✅ ${qualifiedTeams.length} équipes qualifiées issues de ${groupsCount} groupes`);
+
+    // Effectuer le tirage au sort avec contrainte
+    const eliminationMatches = await this.generateEliminationBracket(
+      tournamentId, 
+      qualifiedTeams, 
+      qualificationsByGroup
+    );
+
+    return {
+      qualifiedTeams,
+      eliminationMatches
+    };
+  }
+
+  // Vérifier si tous les groupes sont terminés
+  private static async checkAllGroupsCompleted(tournamentId: string, groupsCount: number): Promise<boolean> {
+    for (let groupNumber = 1; groupNumber <= groupsCount; groupNumber++) {
+      // Vérifier que tous les matchs de qualification du groupe sont terminés
+      const qualificationMatches = await Match.find({
+        tournamentId,
+        groupNumber,
+        roundType: RoundType.GROUP_QUALIFICATION,
+        status: { $ne: MatchStatus.COMPLETED }
+      });
+
+      if (qualificationMatches.length > 0) {
+        return false;
+      }
+
+      // Vérifier aussi les matchs de groupe normaux
+      const groupMatches = await Match.find({
+        tournamentId,
+        groupNumber,
+        roundType: RoundType.GROUP,
+        status: { $ne: MatchStatus.COMPLETED }
+      });
+
+      if (groupMatches.length > 0) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  // Générer le bracket d'élimination directe avec contrainte de groupes
+  private static async generateEliminationBracket(
+    tournamentId: string, 
+    qualifiedTeams: ITeam[], 
+    qualificationsByGroup: Map<number, ITeam[]>
+  ): Promise<IMatch[]> {
+    // Mélanger les équipes avec contrainte : éviter les équipes du même groupe jusqu'en finale
+    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(qualifiedTeams, qualificationsByGroup);
+    
+    // Déterminer le nombre de tours d'élimination
+    const totalTeams = shuffledTeams.length;
+    const firstRoundSize = this.getFirstRoundSize(totalTeams);
+    
+    console.log(`🏟️ Création du bracket d'élimination : ${totalTeams} équipes → ${firstRoundSize} matchs au premier tour`);
+
+    const eliminationMatches = [];
+    let currentRound = 1;
+
+    // Créer les matchs du premier tour
+    for (let i = 0; i < shuffledTeams.length; i += 2) {
+      if (i + 1 < shuffledTeams.length) {
+        const match = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round: currentRound,
+          roundType: RoundType.KNOCKOUT,
+          team1Id: shuffledTeams[i]._id,
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: false,
+          metadata: {
+            eliminationRound: this.getEliminationRoundName(totalTeams, currentRound),
+            team1OriginalGroup: shuffledTeams[i].originalGroup,
+            team2OriginalGroup: shuffledTeams[i + 1].originalGroup
+          }
+        });
+
+        await match.save();
+        eliminationMatches.push(match);
+      }
+    }
+
+    return eliminationMatches;
+  }
+
+  // Mélanger les équipes en évitant les confrontations du même groupe avant la finale
+  private static shuffleTeamsWithGroupConstraint(
+    teams: ITeam[], 
+    qualificationsByGroup: Map<number, ITeam[]>
+  ): ITeam[] {
+    const shuffled = [...teams];
+    const maxAttempts = 100;
+    let attempts = 0;
+
+    // Algorithme de mélange avec contrainte
+    while (attempts < maxAttempts) {
+      this.shuffleArray(shuffled);
+      
+      // Vérifier si le mélange respecte la contrainte
+      if (this.validateGroupConstraint(shuffled, qualificationsByGroup)) {
+        break;
+      }
+      
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      console.warn('⚠️ Impossible de respecter parfaitement la contrainte de groupes, tirage au sort standard');
+    }
+
+    return shuffled;
+  }
+
+  // Valider que les équipes du même groupe ne se rencontrent pas trop tôt
+  private static validateGroupConstraint(
+    teams: ITeam[], 
+    qualificationsByGroup: Map<number, ITeam[]>
+  ): boolean {
+    const totalTeams = teams.length;
+    const finalRound = Math.ceil(Math.log2(totalTeams));
+    
+    // Simuler les rounds pour vérifier la contrainte
+    let currentBracket = [...teams];
+    
+    for (let round = 1; round < finalRound; round++) {
+      const nextRound = [];
+      
+      // Vérifier chaque match du round actuel
+      for (let i = 0; i < currentBracket.length; i += 2) {
+        if (i + 1 < currentBracket.length) {
+          const team1 = currentBracket[i];
+          const team2 = currentBracket[i + 1];
+          
+          // Si même groupe et pas la finale, c'est invalide
+          if (team1.originalGroup === team2.originalGroup && round < finalRound - 1) {
+            return false;
+          }
+          
+          // Pour la simulation, supposons que team1 gagne
+          nextRound.push(team1);
+        }
+      }
+      
+      currentBracket = nextRound;
+    }
+    
+    return true;
+  }
+
+  // Obtenir le nom du round d'élimination
+  private static getEliminationRoundName(totalTeams: number, currentRound: number): string {
+    const roundNames = {
+      1: totalTeams >= 64 ? '64ème de finale' : 
+         totalTeams >= 32 ? '32ème de finale' :
+         totalTeams >= 16 ? '16ème de finale' :
+         totalTeams >= 8 ? '8ème de finale' : 'Quart de finale',
+      2: totalTeams >= 32 ? '32ème de finale' :
+         totalTeams >= 16 ? '16ème de finale' :
+         totalTeams >= 8 ? '8ème de finale' : 'Demi-finale',
+      3: totalTeams >= 16 ? '16ème de finale' :
+         totalTeams >= 8 ? '8ème de finale' : 'Finale',
+      4: totalTeams >= 8 ? '8ème de finale' : 'Finale',
+      5: 'Quart de finale',
+      6: 'Demi-finale',
+      7: 'Finale'
+    };
+    
+    return roundNames[currentRound as keyof typeof roundNames] || `Round ${currentRound}`;
+  }
+
+  // Calculer la taille du premier round
+  private static getFirstRoundSize(totalTeams: number): number {
+    return Math.floor(totalTeams / 2);
+  }
+
+  // Générer les brackets winners et losers (méthode restaurée)
   private static async generateWinnersAndLosersBrackets(tournamentId: string, teams: ITeam[]): Promise<void> {
     // Créer les matchs du premier tour du winners bracket
     const shuffledTeams = this.shuffleArray([...teams]);

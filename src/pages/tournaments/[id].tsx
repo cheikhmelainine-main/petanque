@@ -32,7 +32,8 @@ import {
   useKnockoutPhase,
   useAddTeamsToTournament,
   useNextGroupRound,
-  useNextPoule
+  useNextPoule,
+  useQualificationPhase
 } from '../../hooks/useApi';
 import { TournamentStatus, MatchStatus } from '../../types/api';
 import Link from 'next/link';
@@ -54,6 +55,7 @@ const TournamentDetail: React.FC = () => {
   const addTeamsToTournament = useAddTeamsToTournament();
   const nextGroupRound = useNextGroupRound();
   const nextPoule = useNextPoule();
+  const qualificationPhase = useQualificationPhase();
 
   if (tournamentLoading) {
     return (
@@ -106,6 +108,10 @@ const TournamentDetail: React.FC = () => {
     nextPoule.mutate(id);
   };
 
+  const handleQualification = () => {
+    qualificationPhase.mutate(id);
+  };
+
   const handleTeamsSelected = (teamIds: string[]) => {
     addTeamsToTournament.mutate({ tournamentId: id, teamIds });
   };
@@ -115,6 +121,26 @@ const TournamentDetail: React.FC = () => {
   const currentRoundMatches = matches.filter(m => m.round === currentRound);
   const allCurrentRoundCompleted = currentRoundMatches.length > 0 && 
     currentRoundMatches.every(m => m.status === MatchStatus.COMPLETED);
+
+  // Nouvelle logique pour les tournois GROUP
+  const checkAllGroupsCompleted = () => {
+    if (tournament?.type !== 'GROUP') return false;
+    
+    // Vérifier si toutes les poules ont terminé leurs matchs de qualification
+    const groupMatches = matches.filter(m => m.roundType === 'GROUP' || m.roundType === 'GROUP_QUALIFICATION');
+    const groupNumbers = [...new Set(groupMatches.map(m => m.groupNumber))];
+    
+    if (groupNumbers.length === 0) return false;
+    
+    // Pour chaque groupe, vérifier si tous les matchs sont terminés
+    return groupNumbers.every(groupNumber => {
+      const groupMatchesForGroup = groupMatches.filter(m => m.groupNumber === groupNumber);
+      return groupMatchesForGroup.length > 0 && groupMatchesForGroup.every(m => m.status === MatchStatus.COMPLETED);
+    });
+  };
+
+  const allGroupsCompleted = checkAllGroupsCompleted();
+  const hasEliminationMatches = matches.some(m => m.roundType === 'KNOCKOUT' || m.roundType === 'WINNERS' || m.roundType === 'LOSERS');
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('fr-FR', {
@@ -215,16 +241,32 @@ const TournamentDetail: React.FC = () => {
                 </Button>
               )}
               
-              {allCurrentRoundCompleted && tournament.type === 'GROUP' && (
-                <Button 
-                  onClick={handleNextPoule}
-                  disabled={nextPoule.isPending}
-                  className="gap-2"
-                  size="sm"
-                >
-                  <Target className="h-4 w-4" />
-                  {nextPoule.isPending ? 'Génération...' : 'Lancer la poule suivante'}
-                </Button>
+              {tournament.type === 'GROUP' && !hasEliminationMatches && (
+                <>
+                  {!allGroupsCompleted && allCurrentRoundCompleted && (
+                    <Button 
+                      onClick={handleNextPoule}
+                      disabled={nextPoule.isPending}
+                      className="gap-2"
+                      size="sm"
+                    >
+                      <Target className="h-4 w-4" />
+                      {nextPoule.isPending ? 'Génération...' : 'Lancer la poule suivante'}
+                    </Button>
+                  )}
+                  
+                  {allGroupsCompleted && (
+                    <Button 
+                      onClick={handleQualification}
+                      disabled={qualificationPhase.isPending}
+                      className="gap-2 bg-green-600 hover:bg-green-700"
+                      size="sm"
+                    >
+                      <Medal className="h-4 w-4" />
+                      {qualificationPhase.isPending ? 'Qualification...' : 'Qualification'}
+                    </Button>
+                  )}
+                </>
               )}
               
               {allCurrentRoundCompleted && tournament.type === 'MARATHON' && (

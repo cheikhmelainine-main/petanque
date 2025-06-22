@@ -369,4 +369,36 @@ export const useNextPoule = () => {
       toast.error(error instanceof Error ? error.message : 'Erreur lors du démarrage de la poule suivante');
     },
   });
+};
+
+// Hook pour lancer les qualifications post-poules
+export const useQualificationPhase = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const response = await fetch(`/api/tournament/${tournamentId}/qualification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors du lancement des qualifications');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success(`🏆 Qualifications lancées ! ${data.totalQualified} équipes qualifiées`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors du lancement des qualifications');
+    },
+  });
 }; 
