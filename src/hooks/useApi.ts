@@ -338,4 +338,35 @@ export const useGenerateGroupQualification = () => {
       toast.error('Erreur lors de la génération du match de qualification');
     },
   });
+};
+
+// Hook pour démarrer la poule suivante (pour les tournois GROUP)
+export const useNextPoule = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const response = await fetch(`/api/tournament/${tournamentId}/next-poule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors du démarrage de la poule suivante');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+      toast.success('Poule suivante démarrée !');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors du démarrage de la poule suivante');
+    },
+  });
 }; 

@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 
 import { SelectTeamsForm } from '../../components/teams/SelectTeamsForm';
 import { TournamentRanking } from '../../components/tournaments/TournamentRanking';
+import { GroupMatchesList } from '../../components/matches/GroupMatchesList';
 
 import { 
   useTournament, 
@@ -30,7 +31,8 @@ import {
   useNextRound, 
   useKnockoutPhase,
   useAddTeamsToTournament,
-  useNextGroupRound
+  useNextGroupRound,
+  useNextPoule
 } from '../../hooks/useApi';
 import { TournamentStatus, MatchStatus } from '../../types/api';
 import Link from 'next/link';
@@ -51,6 +53,7 @@ const TournamentDetail: React.FC = () => {
   const knockoutPhase = useKnockoutPhase();
   const addTeamsToTournament = useAddTeamsToTournament();
   const nextGroupRound = useNextGroupRound();
+  const nextPoule = useNextPoule();
 
   if (tournamentLoading) {
     return (
@@ -97,6 +100,10 @@ const TournamentDetail: React.FC = () => {
 
   const handleNextGroupRound = () => {
     nextGroupRound.mutate(id);
+  };
+
+  const handleNextPoule = () => {
+    nextPoule.mutate(id);
   };
 
   const handleTeamsSelected = (teamIds: string[]) => {
@@ -210,13 +217,13 @@ const TournamentDetail: React.FC = () => {
               
               {allCurrentRoundCompleted && tournament.type === 'GROUP' && (
                 <Button 
-                  onClick={handleNextGroupRound}
-                  disabled={nextGroupRound.isPending}
+                  onClick={handleNextPoule}
+                  disabled={nextPoule.isPending}
                   className="gap-2"
                   size="sm"
                 >
                   <Target className="h-4 w-4" />
-                  {nextGroupRound.isPending ? 'Génération...' : 'Round suivant'}
+                  {nextPoule.isPending ? 'Génération...' : 'Lancer la poule suivante'}
                 </Button>
               )}
               
@@ -430,62 +437,66 @@ const TournamentDetail: React.FC = () => {
         </TabsContent>
         
         <TabsContent value="matches" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Matchs du tournoi</CardTitle>
-              <CardDescription>
-                Tous les matchs programmés et terminés
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {matches.length > 0 ? (
-                <div className="space-y-4">
-                  {Array.from(new Set(matches.map(m => m.round))).sort().map(round => (
-                    <div key={round} className="space-y-2">
-                      <h4 className="font-medium text-gray-900 dark:text-white">
-                        Tour {round}
-                      </h4>
-                      <div className="grid grid-cols-1 gap-2">
-                        {matches.filter(m => m.round === round).map((match) => (
-                          <div 
-                            key={match._id}
-                            className="flex items-center justify-between p-3 border rounded-lg"
-                          >
-                            <div className="flex items-center gap-4">
-                              <span className="text-sm font-medium">
-                                {match.team1Id?.name || 'Équipe 1'}
-                              </span>
-                              <span className="text-gray-500">vs</span>
-                              <span className="text-sm font-medium">
-                                {match.team2Id?.name || 'Équipe 2'}
-                              </span>
-                            </div>
-                            
-                            <div className="flex items-center gap-3">
-                              {match.status === MatchStatus.COMPLETED ? (
-                                <span className="text-sm font-mono">
-                                  {match.team1Score} - {match.team2Score}
+          {tournament.type === 'GROUP' ? (
+            <GroupMatchesList matches={matches} />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Matchs du tournoi</CardTitle>
+                <CardDescription>
+                  Tous les matchs programmés et terminés
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {matches.length > 0 ? (
+                  <div className="space-y-4">
+                    {Array.from(new Set(matches.map(m => m.round))).sort().map(round => (
+                      <div key={round} className="space-y-2">
+                        <h4 className="font-medium text-gray-900 dark:text-white">
+                          Tour {round}
+                        </h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {matches.filter(m => m.round === round).map((match) => (
+                            <div 
+                              key={match._id}
+                              className="flex items-center justify-between p-3 border rounded-lg"
+                            >
+                              <div className="flex items-center gap-4">
+                                <span className="text-sm font-medium">
+                                  {match.team1Id?.name || 'Équipe 1'}
                                 </span>
-                              ) : (
-                                <Badge variant="outline" className="text-xs">
-                                  En attente
-                                </Badge>
-                              )}
+                                <span className="text-gray-500">vs</span>
+                                <span className="text-sm font-medium">
+                                  {match.team2Id?.name || 'Équipe 2'}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-3">
+                                {match.status === MatchStatus.COMPLETED ? (
+                                  <span className="text-sm font-mono">
+                                    {match.team1Score} - {match.team2Score}
+                                  </span>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs">
+                                    En attente
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-500">Aucun match programmé</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-500">Aucun match programmé</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
         
         <TabsContent value="ranking" className="space-y-6">
