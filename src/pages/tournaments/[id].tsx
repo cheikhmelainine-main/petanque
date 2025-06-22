@@ -22,6 +22,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { SelectTeamsForm } from '../../components/teams/SelectTeamsForm';
 import { TournamentRanking } from '../../components/tournaments/TournamentRanking';
 import { GroupMatchesList } from '../../components/matches/GroupMatchesList';
+import QualificationButton from '../../components/tournaments/QualificationButton';
+import EliminationBracket from '../../components/tournaments/EliminationBracket';
 
 import { 
   useTournament, 
@@ -411,6 +413,20 @@ const TournamentDetail: React.FC = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Bouton de qualification pour les tournois de type GROUP */}
+          {tournament.type === 'GROUP' && 
+           tournament.status === TournamentStatus.ONGOING && 
+           allGroupsCompleted && 
+           !hasEliminationMatches && (
+            <QualificationButton 
+              tournamentId={id}
+              onQualificationComplete={() => {
+                // Recharger les données après qualification
+                window.location.reload();
+              }}
+            />
+          )}
         </TabsContent>
         
         <TabsContent value="teams" className="space-y-6">

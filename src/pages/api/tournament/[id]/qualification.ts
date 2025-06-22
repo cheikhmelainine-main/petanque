@@ -4,33 +4,62 @@ import connectDB from '../../../../lib/mongodb';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Méthode non autorisée' });
+    return res.status(405).json({ error: 'Méthode non autorisée' });
   }
 
   try {
     await connectDB();
     
-    const { id } = req.query;
-
-    if (!id || typeof id !== 'string') {
-      return res.status(400).json({ message: 'ID du tournoi requis' });
+    const { id: tournamentId } = req.query;
+    
+    if (!tournamentId || typeof tournamentId !== 'string') {
+      return res.status(400).json({ error: 'ID du tournoi requis' });
     }
 
-    console.log('🏆 Lancement des qualifications pour le tournoi:', id);
-
-    const result = await TournamentService.generateQualificationPhase(id);
+    // Vérifier que toutes les poules sont terminées
+    const canStartQualification = await TournamentService.canStartNextRound(tournamentId);
     
+    if (!canStartQualification.canStart) {
+      return res.status(400).json({ 
+        error: 'Impossible de lancer les qualifications',
+        details: {
+          currentRound: canStartQualification.currentRound,
+          completedGroups: canStartQualification.completedGroups,
+          totalGroups: canStartQualification.totalGroups
+        }
+      });
+    }
+
+    // Générer la phase de qualification avec tirage au sort
+    const result = await TournamentService.generateQualificationPhase(tournamentId);
+
     return res.status(200).json({
-      message: `Qualifications lancées avec succès ! ${result.qualifiedTeams.length} équipes qualifiées, ${result.eliminationMatches.length} matchs d'élimination créés`,
-      qualifiedTeams: result.qualifiedTeams,
-      eliminationMatches: result.eliminationMatches,
-      totalQualified: result.qualifiedTeams.length,
-      totalMatches: result.eliminationMatches.length
+      success: true,
+      message: `Phase de qualification générée avec succès`,
+      data: {
+        qualifiedTeamsCount: result.qualifiedTeams.length,
+        eliminationMatchesCount: result.eliminationMatches.length,
+        qualifiedTeams: result.qualifiedTeams.map(team => ({
+          id: team._id,
+          name: team.name,
+          originalGroup: team.originalGroup,
+          qualificationRank: team.qualificationRank
+        })),
+        eliminationMatches: result.eliminationMatches.map(match => ({
+          id: match._id,
+          round: match.round,
+          team1Id: match.team1Id,
+          team2Id: match.team2Id,
+          eliminationRound: match.metadata?.eliminationRound
+        }))
+      }
     });
-  } catch (error: any) {
-    console.error('❌ Erreur lors des qualifications:', error);
+
+  } catch (error) {
+    console.error('Erreur lors de la génération de la phase de qualification:', error);
     return res.status(500).json({ 
-      message: error.message || 'Erreur lors du lancement des qualifications' 
+      error: 'Erreur interne du serveur',
+      details: error instanceof Error ? error.message : 'Erreur inconnue'
     });
   }
 } 

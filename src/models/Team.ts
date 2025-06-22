@@ -34,6 +34,7 @@ export interface ITeam extends mongoose.Document {
   draws: number;             // Nombre de matchs nuls
   isQualified?: boolean;     // Si l'équipe est qualifiée (groupes)
   qualificationRank?: number; // Rang de qualification dans le groupe (1er qualifié direct, 2ème en barrage)
+  originalGroup?: number;    // Groupe d'origine pour les contraintes de tirage
   
   createdAt: Date;
   updatedAt: Date;
@@ -145,6 +146,9 @@ const teamSchema = new mongoose.Schema<ITeam>({
     type: Boolean
   },
   qualificationRank: {
+    type: Number
+  },
+  originalGroup: {
     type: Number
   },
   createdAt: {

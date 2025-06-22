@@ -36,6 +36,11 @@ export interface IMatch extends Document {
   timerStartedAt?: Date;  // Quand le timer a été démarré
   finishedBeforeTimeLimit?: boolean;  // Si le match s'est fini avant la limite
   isTimedMatch?: boolean;  // Si c'est un match avec limite de temps
+  metadata?: {
+    eliminationRound?: string;  // Nom du round d'élimination (64e, 32e, etc.)
+    team1OriginalGroup?: number;  // Groupe d'origine de l'équipe 1
+    team2OriginalGroup?: number;  // Groupe d'origine de l'équipe 2
+  };
   createdAt: Date;
 }
 
@@ -109,6 +114,17 @@ const matchSchema = new Schema<IMatch>({
   isTimedMatch: {
     type: Boolean,
     default: false
+  },
+  metadata: {
+    eliminationRound: {
+      type: String
+    },
+    team1OriginalGroup: {
+      type: Number
+    },
+    team2OriginalGroup: {
+      type: Number
+    }
   },
   createdAt: {
     type: Date,
