@@ -13,6 +13,8 @@ export enum RoundType {
   LOSERS = 'LOSERS',
   GROUP = 'GROUP',
   GROUP_QUALIFICATION = 'GROUP_QUALIFICATION',
+  GROUP_WINNERS_FINAL = 'GROUP_WINNERS_FINAL',
+  GROUP_LOSERS_FINAL = 'GROUP_LOSERS_FINAL',
   FINAL = 'FINAL',
   KNOCKOUT = 'KNOCKOUT'
 }
@@ -40,6 +42,9 @@ export interface IMatch extends Document {
     eliminationRound?: string;  // Nom du round d'élimination (64e, 32e, etc.)
     team1OriginalGroup?: number;  // Groupe d'origine de l'équipe 1
     team2OriginalGroup?: number;  // Groupe d'origine de l'équipe 2
+    finalType?: 'winners' | 'losers';  // Type de finale de groupe
+    groupNumber?: number;  // Numéro du groupe
+    description?: string;  // Description de la finale
   };
   createdAt: Date;
 }
@@ -124,6 +129,16 @@ const matchSchema = new Schema<IMatch>({
     },
     team2OriginalGroup: {
       type: Number
+    },
+    finalType: {
+      type: String,
+      enum: ['winners', 'losers']
+    },
+    groupNumber: {
+      type: Number
+    },
+    description: {
+      type: String
     }
   },
   createdAt: {

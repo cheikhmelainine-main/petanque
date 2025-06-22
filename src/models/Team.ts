@@ -35,6 +35,7 @@ export interface ITeam extends mongoose.Document {
   isQualified?: boolean;     // Si l'équipe est qualifiée (groupes)
   qualificationRank?: number; // Rang de qualification dans le groupe (1er qualifié direct, 2ème en barrage)
   originalGroup?: number;    // Groupe d'origine pour les contraintes de tirage
+  qualificationType?: 'winners_final' | 'losers_final'; // Type de qualification (finale gagnants ou perdants)
   
   createdAt: Date;
   updatedAt: Date;
@@ -150,6 +151,10 @@ const teamSchema = new mongoose.Schema<ITeam>({
   },
   originalGroup: {
     type: Number
+  },
+  qualificationType: {
+    type: String,
+    enum: ['winners_final', 'losers_final']
   },
   createdAt: {
     type: Date,

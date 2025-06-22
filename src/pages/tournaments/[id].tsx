@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { SelectTeamsForm } from '../../components/teams/SelectTeamsForm';
 import { TournamentRanking } from '../../components/tournaments/TournamentRanking';
 import { GroupMatchesList } from '../../components/matches/GroupMatchesList';
-import QualificationButton from '../../components/tournaments/QualificationButton';
+import SeparateQualificationManager from '../../components/tournaments/SeparateQualificationManager';
 import EliminationBracket from '../../components/tournaments/EliminationBracket';
 
 import { 
@@ -33,7 +33,6 @@ import {
   useNextRound, 
   useKnockoutPhase,
   useAddTeamsToTournament,
-  useNextGroupRound,
   useNextPoule,
   useQualificationPhase
 } from '../../hooks/useApi';
@@ -55,7 +54,6 @@ const TournamentDetail: React.FC = () => {
   const nextRound = useNextRound();
   const knockoutPhase = useKnockoutPhase();
   const addTeamsToTournament = useAddTeamsToTournament();
-  const nextGroupRound = useNextGroupRound();
   const nextPoule = useNextPoule();
   const qualificationPhase = useQualificationPhase();
 
@@ -100,10 +98,6 @@ const TournamentDetail: React.FC = () => {
 
   const handleKnockoutPhase = () => {
     knockoutPhase.mutate(id);
-  };
-
-  const handleNextGroupRound = () => {
-    nextGroupRound.mutate(id);
   };
 
   const handleNextPoule = () => {
@@ -414,14 +408,14 @@ const TournamentDetail: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Bouton de qualification pour les tournois de type GROUP */}
+          {/* Nouveau système de qualifications séparées pour les tournois de type GROUP */}
           {tournament.type === 'GROUP' && 
            tournament.status === TournamentStatus.ONGOING && 
            allGroupsCompleted && 
            !hasEliminationMatches && (
-            <QualificationButton 
+            <SeparateQualificationManager 
               tournamentId={id}
-              onQualificationComplete={() => {
+              onQualificationGenerated={() => {
                 // Recharger les données après qualification
                 window.location.reload();
               }}
@@ -564,6 +558,14 @@ const TournamentDetail: React.FC = () => {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Affichage des brackets d'élimination si ils existent */}
+      {hasEliminationMatches && (
+        <EliminationBracket 
+          tournamentId={id}
+          matches={matches.filter(m => m.roundType === 'KNOCKOUT')}
+        />
+      )}
 
       {/* Modal de sélection d'équipes */}
       <SelectTeamsForm

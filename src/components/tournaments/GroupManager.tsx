@@ -40,16 +40,21 @@ interface GroupData {
     matchesPlayed: number;
     isQualified?: boolean;
     qualificationRank?: number;
+    qualificationType?: 'winners_final' | 'losers_final';
   }>;
   matches: {
     round1: MatchData[];
     round2: MatchData[];
     qualification: MatchData[];
+    winnersFinal: MatchData[];
+    losersFinal: MatchData[];
   };
   status: string;
   round1Completed: boolean;
   round2Completed: boolean;
   qualificationCompleted: boolean;
+  winnersFinalCompleted: boolean;
+  losersFinalCompleted: boolean;
 }
 
 interface GroupStatusData {
@@ -148,6 +153,10 @@ export const GroupManager: React.FC<GroupManagerProps> = ({
     switch (status) {
       case 'COMPLETED':
         return 'bg-green-100 text-green-800';
+      case 'FINALS_IN_PROGRESS':
+        return 'bg-purple-100 text-purple-800';
+      case 'FINALS_READY':
+        return 'bg-orange-100 text-orange-800';
       case 'QUALIFICATION_READY':
         return 'bg-blue-100 text-blue-800';
       case 'ROUND_2_READY':
@@ -161,6 +170,10 @@ export const GroupManager: React.FC<GroupManagerProps> = ({
     switch (status) {
       case 'COMPLETED':
         return 'Terminé';
+      case 'FINALS_IN_PROGRESS':
+        return 'Finales en cours';
+      case 'FINALS_READY':
+        return 'Prêt pour finales';
       case 'QUALIFICATION_READY':
         return 'Prêt pour qualification';
       case 'ROUND_2_READY':
@@ -357,41 +370,68 @@ export const GroupManager: React.FC<GroupManagerProps> = ({
                   <div>
                     <h4 className="font-medium mb-2 flex items-center gap-2">
                       <Trophy className="h-4 w-4" />
-                      Match de qualification
-                      {group.qualificationCompleted && <CheckCircle className="h-4 w-4 text-green-600" />}
+                      Finales de groupe
+                      {(group.winnersFinalCompleted && group.losersFinalCompleted) && <CheckCircle className="h-4 w-4 text-green-600" />}
                     </h4>
                     
-                    {group.matches.qualification.length === 0 ? (
+                    {/* Finale des gagnants */}
+                    {group.matches.winnersFinal.length > 0 && (
+                      <div className="mb-3">
+                        <h5 className="text-sm font-medium text-green-600 mb-2">🏆 Finale des Gagnants</h5>
+                        <div className="space-y-2">
+                          {group.matches.winnersFinal.map((match) => (
+                            <div key={match._id} className="text-sm">
+                              <MatchCard
+                                matchId={match._id}
+                                team1Name={match.team1Id?.name || 'Équipe 1'}
+                                team2Name={match.team2Id?.name || 'Équipe 2'}
+                                team1Score={match.team1Score || 0}
+                                team2Score={match.team2Score || 0}
+                                tournamentType="GROUP"
+                                status={match.status}
+                                onScoreUpdate={handleScoreUpdate}
+                                disabled={match.status === 'COMPLETED'}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Finale des perdants */}
+                    {group.matches.losersFinal.length > 0 && (
+                      <div className="mb-3">
+                        <h5 className="text-sm font-medium text-orange-600 mb-2">🥉 Finale des Perdants</h5>
+                        <div className="space-y-2">
+                          {group.matches.losersFinal.map((match) => (
+                            <div key={match._id} className="text-sm">
+                              <MatchCard
+                                matchId={match._id}
+                                team1Name={match.team1Id?.name || 'Équipe 1'}
+                                team2Name={match.team2Id?.name || 'Équipe 2'}
+                                team1Score={match.team1Score || 0}
+                                team2Score={match.team2Score || 0}
+                                tournamentType="GROUP"
+                                status={match.status}
+                                onScoreUpdate={handleScoreUpdate}
+                                disabled={match.status === 'COMPLETED'}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Générer les finales si elles n'existent pas */}
+                    {group.matches.winnersFinal.length === 0 && group.matches.losersFinal.length === 0 && (
                       <Button
                         onClick={() => handleGroupAction('generate_qualification_match', group.groupNumber)}
                         disabled={actionLoading === `generate_qualification_match${group.groupNumber}`}
                         variant="outline"
                         size="sm"
                       >
-                        Générer match de qualification
+                        Générer finales de groupe
                       </Button>
-                    ) : (
-                      <div className="space-y-2">
-                        {group.matches.qualification.map((match) => (
-                          <div key={match._id} className="text-sm">
-                            <MatchCard
-                              matchId={match._id}
-                              team1Name={match.team1Id?.name || 'Équipe 1'}
-                              team2Name={match.team2Id?.name || 'Équipe 2'}
-                              team1Score={match.team1Score || 0}
-                              team2Score={match.team2Score || 0}
-                              tournamentType="GROUP"
-                              status={match.status}
-                              onScoreUpdate={handleScoreUpdate}
-                              disabled={match.status === 'COMPLETED'}
-                            />
-                          </div>
-                        ))}
-                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                          <AlertCircle className="h-3 w-3 inline mr-1" />
-                          Le gagnant obtient la 2ème place de qualification
-                        </div>
-                      </div>
                     )}
                   </div>
                 </>

@@ -122,6 +122,8 @@ async function getGroupDetails(tournamentId: string, groupNumber: number) {
   const round1Matches = matches.filter(m => m.round === 1 && m.roundType === 'GROUP');
   const round2Matches = matches.filter(m => m.round === 2 && m.roundType === 'GROUP');
   const qualificationMatches = matches.filter(m => m.roundType === 'GROUP_QUALIFICATION');
+  const winnersFinalMatches = matches.filter(m => m.roundType === 'GROUP_WINNERS_FINAL');
+  const losersFinalMatches = matches.filter(m => m.roundType === 'GROUP_LOSERS_FINAL');
 
   // Calculer les statistiques des équipes
   const teamStats = teams.map(team => {
@@ -150,12 +152,18 @@ async function getGroupDetails(tournamentId: string, groupNumber: number) {
   const round1Completed = round1Matches.length > 0 && round1Matches.every(m => m.status === 'COMPLETED');
   const round2Completed = round2Matches.length > 0 && round2Matches.every(m => m.status === 'COMPLETED');
   const qualificationCompleted = qualificationMatches.length > 0 && qualificationMatches.every(m => m.status === 'COMPLETED');
+  const winnersFinalCompleted = winnersFinalMatches.length > 0 && winnersFinalMatches.every(m => m.status === 'COMPLETED');
+  const losersFinalCompleted = losersFinalMatches.length > 0 && losersFinalMatches.every(m => m.status === 'COMPLETED');
 
   let status = 'ROUND_1_IN_PROGRESS';
-  if (qualificationCompleted) {
+  if (winnersFinalCompleted && losersFinalCompleted) {
+    status = 'COMPLETED';
+  } else if (winnersFinalMatches.length > 0 || losersFinalMatches.length > 0) {
+    status = 'FINALS_IN_PROGRESS';
+  } else if (qualificationCompleted) {
     status = 'COMPLETED';
   } else if (round2Completed) {
-    status = 'QUALIFICATION_READY';
+    status = 'FINALS_READY';
   } else if (round1Completed) {
     status = 'ROUND_2_READY';
   }
@@ -166,12 +174,16 @@ async function getGroupDetails(tournamentId: string, groupNumber: number) {
     matches: {
       round1: round1Matches,
       round2: round2Matches,
-      qualification: qualificationMatches
+      qualification: qualificationMatches,
+      winnersFinal: winnersFinalMatches,
+      losersFinal: losersFinalMatches
     },
     status,
     round1Completed,
     round2Completed,
-    qualificationCompleted
+    qualificationCompleted,
+    winnersFinalCompleted,
+    losersFinalCompleted
   };
 }
 
@@ -193,10 +205,13 @@ async function checkAllGroupsProgression(tournamentId: string) {
       progressionResults.push(`Round 2 généré pour le groupe ${groupNumber}`);
     }
     
-    if (groupStatus.round2Completed && groupStatus.matches.qualification.length === 0) {
-      // Générer le match de qualification
+    if (groupStatus.round2Completed && 
+        groupStatus.matches.qualification.length === 0 && 
+        groupStatus.matches.winnersFinal.length === 0 && 
+        groupStatus.matches.losersFinal.length === 0) {
+      // Générer les finales de groupe
       await TournamentService.generateGroupQualificationMatch(tournamentId, groupNumber);
-      progressionResults.push(`Match de qualification généré pour le groupe ${groupNumber}`);
+      progressionResults.push(`Finales de groupe générées pour le groupe ${groupNumber}`);
     }
   }
 
@@ -243,4 +258,23 @@ function getOverallGroupStatus(groupsStatus: any[]) {
   } else {
     return 'IN_PROGRESS';
   }
-} 
+}
+
+const getStatusText = (status: string) => {
+  switch (status) {
+    case 'COMPLETED':
+      return 'Terminé';
+    case 'FINALS_IN_PROGRESS':
+      return 'Finales en cours';
+    case 'FINALS_READY':
+      return 'Prêt pour finales';
+    case 'QUALIFICATION_READY':
+      return 'Prêt pour qualification';
+    case 'ROUND_2_READY':
+      return 'Prêt pour round 2';
+    case 'ROUND_1_IN_PROGRESS':
+      return 'Round 1 en cours';
+    default:
+      return status;
+  }
+}; 
