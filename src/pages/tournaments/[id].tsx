@@ -18,8 +18,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
+
 import { SelectTeamsForm } from '../../components/teams/SelectTeamsForm';
+import { TournamentRanking } from '../../components/tournaments/TournamentRanking';
 
 import { 
   useTournament, 
@@ -28,7 +29,8 @@ import {
   useStartTournament, 
   useNextRound, 
   useKnockoutPhase,
-  useAddTeamsToTournament
+  useAddTeamsToTournament,
+  useNextGroupRound
 } from '../../hooks/useApi';
 import { TournamentStatus, MatchStatus } from '../../types/api';
 import Link from 'next/link';
@@ -48,6 +50,7 @@ const TournamentDetail: React.FC = () => {
   const nextRound = useNextRound();
   const knockoutPhase = useKnockoutPhase();
   const addTeamsToTournament = useAddTeamsToTournament();
+  const nextGroupRound = useNextGroupRound();
 
   if (tournamentLoading) {
     return (
@@ -90,6 +93,10 @@ const TournamentDetail: React.FC = () => {
 
   const handleKnockoutPhase = () => {
     knockoutPhase.mutate(id);
+  };
+
+  const handleNextGroupRound = () => {
+    nextGroupRound.mutate(id);
   };
 
   const handleTeamsSelected = (teamIds: string[]) => {
@@ -142,12 +149,7 @@ const TournamentDetail: React.FC = () => {
     );
   };
 
-  const sortedTeams = [...teams].sort((a, b) => {
-    if ((a.points || a.stats?.points || 0) !== (b.points || b.stats?.points || 0)) {
-      return (b.points || b.stats?.points || 0) - (a.points || a.stats?.points || 0);
-    }
-    return (b.scoreDiff || b.stats?.scoreDifference || 0) - (a.scoreDiff || a.stats?.scoreDifference || 0);
-  });
+
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -198,16 +200,27 @@ const TournamentDetail: React.FC = () => {
                 <Button 
                   onClick={handleNextRound}
                   disabled={nextRound.isPending}
-                  variant="outline"
                   className="gap-2"
                   size="sm"
                 >
                   <Target className="h-4 w-4" />
-                  {nextRound.isPending ? 'Génération...' : 'Tour suivant'}
+                  {nextRound.isPending ? 'Génération...' : 'Prochain tour'}
                 </Button>
               )}
               
-              {allCurrentRoundCompleted && currentRound >= 5 && tournament.type === 'SWISS' && (
+              {allCurrentRoundCompleted && tournament.type === 'GROUP' && (
+                <Button 
+                  onClick={handleNextGroupRound}
+                  disabled={nextGroupRound.isPending}
+                  className="gap-2"
+                  size="sm"
+                >
+                  <Target className="h-4 w-4" />
+                  {nextGroupRound.isPending ? 'Génération...' : 'Round suivant'}
+                </Button>
+              )}
+              
+              {allCurrentRoundCompleted && tournament.type === 'MARATHON' && (
                 <Button 
                   onClick={handleKnockoutPhase}
                   disabled={knockoutPhase.isPending}
@@ -220,54 +233,74 @@ const TournamentDetail: React.FC = () => {
               )}
             </>
           )}
+          
+          {tournament.status === TournamentStatus.UPCOMING && (
+            <Button 
+              onClick={() => setShowSelectTeams(true)}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Ajouter équipes
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Statistiques rapides */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Statistiques */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Users className="h-6 w-6 md:h-8 md:w-8 text-blue-600" />
-              <div>
-                <p className="text-xl md:text-2xl font-bold">{teams.length}</p>
-                <p className="text-xs md:text-sm text-gray-500">Équipes</p>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center">
+              <Users className="h-8 w-8 text-blue-500" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Équipes</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {teams.length}
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Calendar className="h-6 w-6 md:h-8 md:w-8 text-green-600" />
-              <div>
-                <p className="text-xl md:text-2xl font-bold">{matches.length}</p>
-                <p className="text-xs md:text-sm text-gray-500">Matchs</p>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center">
+              <Calendar className="h-8 w-8 text-green-500" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Matchs</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {matches.length}
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="h-6 w-6 md:h-8 md:w-8 text-purple-600" />
-              <div>
-                <p className="text-xl md:text-2xl font-bold">{completedMatches.length}</p>
-                <p className="text-xs md:text-sm text-gray-500">Terminés</p>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center">
+              <CheckCircle className="h-8 w-8 text-purple-500" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Terminés</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {completedMatches.length}
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
         
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Clock className="h-6 w-6 md:h-8 md:w-8 text-orange-600" />
-              <div>
-                <p className="text-xl md:text-2xl font-bold">{currentRound}</p>
-                <p className="text-xs md:text-sm text-gray-500">Tour actuel</p>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center">
+              <Clock className="h-8 w-8 text-orange-500" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Tour actuel</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {currentRound || 0}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -275,96 +308,69 @@ const TournamentDetail: React.FC = () => {
       </div>
 
       {/* Onglets */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Vue d&apos;ensemble</TabsTrigger>
-          <TabsTrigger value="teams">Équipes ({teams.length})</TabsTrigger>
-          <TabsTrigger value="matches">Matchs ({matches.length})</TabsTrigger>
+          <TabsTrigger value="teams">Équipes</TabsTrigger>
+          <TabsTrigger value="matches">Matchs</TabsTrigger>
           <TabsTrigger value="ranking">Classement</TabsTrigger>
         </TabsList>
-
+        
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Informations du tournoi</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-500">Type :</span>
-                    <p className="font-medium">{tournament.type}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Format :</span>
-                    <p className="font-medium">{tournament.format}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Date de début :</span>
-                    <p className="font-medium">{formatDate(tournament.startDate)}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Statut :</span>
-                    <div className="mt-1">{getStatusBadge(tournament.status)}</div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Détails du tournoi</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Type</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {tournament.type}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Format</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {tournament.format}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Date de début</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {formatDate(tournament.startDate)}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Statut</p>
+                  <div className="mt-1">
+                    {getStatusBadge(tournament.status)}
                   </div>
                 </div>
-                {tournament.description && (
-                  <div>
-                    <span className="text-gray-500 text-sm">Description :</span>
-                    <p className="text-sm mt-1">{tournament.description}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Progression</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between text-sm">
-                    <span>Matchs terminés</span>
-                    <span>{completedMatches.length}/{matches.length}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-green-600 h-2 rounded-full transition-all"
-                      style={{ 
-                        width: matches.length > 0 ? `${(completedMatches.length / matches.length) * 100}%` : '0%' 
-                      }}
-                    ></div>
-                  </div>
-                  {tournament.status === TournamentStatus.ONGOING && (
-                    <p className="text-xs text-gray-500">
-                      Tour {currentRound} en cours
-                    </p>
-                  )}
+              </div>
+              
+              {tournament.description && (
+                <div>
+                  <p className="text-sm font-medium text-gray-600 mb-2">Description</p>
+                  <p className="text-gray-900 dark:text-white">
+                    {tournament.description}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
-
+        
         <TabsContent value="teams" className="space-y-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Équipes inscrites</CardTitle>
-                <CardDescription>
-                  {teams.length} équipe{teams.length > 1 ? 's' : ''} inscrite{teams.length > 1 ? 's' : ''}
-                </CardDescription>
-              </div>
-              {tournament?.status === TournamentStatus.UPCOMING && (
-                <Button 
-                  onClick={() => setShowSelectTeams(true)}
-                  className="gap-2"
-                  size="sm"
-                >
-                  <Plus className="h-4 w-4" />
-                  Ajouter équipes
-                </Button>
-              )}
+            <CardHeader>
+              <CardTitle>Équipes inscrites</CardTitle>
+              <CardDescription>
+                Liste des équipes participant au tournoi
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {teams.length > 0 ? (
@@ -483,76 +489,10 @@ const TournamentDetail: React.FC = () => {
         </TabsContent>
         
         <TabsContent value="ranking" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Classement</CardTitle>
-              <CardDescription>
-                Classement actuel des équipes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {sortedTeams.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">#</TableHead>
-                      <TableHead>Équipe</TableHead>
-                      <TableHead className="text-center">J</TableHead>
-                      <TableHead className="text-center">V</TableHead>
-                      <TableHead className="text-center">N</TableHead>
-                      <TableHead className="text-center">D</TableHead>
-                      <TableHead className="text-center">Pts</TableHead>
-                      <TableHead className="text-center">Diff</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedTeams.map((team, index) => (
-                      <TableRow key={team._id}>
-                        <TableCell className="font-medium">
-                          {index + 1}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {team.name}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {team.stats?.gamesPlayed || 0}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {team.stats?.wins || 0}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {team.stats?.draws || 0}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {team.stats?.losses || 0}
-                        </TableCell>
-                        <TableCell className="text-center font-medium">
-                          {team.points || team.stats?.points || 0}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className={
-                            (team.scoreDiff || team.stats?.scoreDifference || 0) > 0 
-                              ? 'text-green-600' 
-                              : (team.scoreDiff || team.stats?.scoreDifference || 0) < 0 
-                              ? 'text-red-600' 
-                              : 'text-gray-600'
-                          }>
-                            {(team.scoreDiff || team.stats?.scoreDifference || 0) > 0 ? '+' : ''}
-                            {team.scoreDiff || team.stats?.scoreDifference || 0}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="text-center py-8">
-                  <Trophy className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-500">Aucun classement disponible</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <TournamentRanking 
+            tournamentId={id} 
+            tournamentType={tournament.type as 'GROUP' | 'SWISS' | 'MARATHON'} 
+          />
         </TabsContent>
       </Tabs>
 
@@ -567,4 +507,4 @@ const TournamentDetail: React.FC = () => {
   );
 };
 
-export default TournamentDetail; 
+export default TournamentDetail;

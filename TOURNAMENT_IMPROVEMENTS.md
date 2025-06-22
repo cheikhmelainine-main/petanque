@@ -171,4 +171,119 @@
 3. **Notifications en Temps Réel**
    - Alertes fin de match
    - Progression automatique des phases
-   - Notifications push pour arbitres 
+   - Notifications push pour arbitres
+
+## 📋 NOUVELLES FONCTIONNALITÉS IMPLÉMENTÉES
+
+### 1. 🎯 **Nouveau Système de Points (Swiss/Marathon)**
+- **Victoire à 13 points** : 3 points de tournoi
+- **Victoire dans le temps** (sans atteindre 13) : 2 points
+- **Match nul dans le temps** : 1 point chacun
+- **Affichage dynamique** des points potentiels selon la situation
+
+### 2. ⏱️ **Système de Chronométrage Intégré**
+- **Timer de 45 minutes** par match (Swiss/Marathon uniquement)
+- **Contrôles visuels** : Start/Pause/Stop
+- **Barre de progression** avec changement de couleur selon le temps restant
+- **Détection automatique** de fin de temps pour calcul des points
+
+### 3. 🏟️ **Tournois par Groupes - Nouvelle Logique**
+- **Groupes de 3 ou 4 équipes** (choix de l'arbitre)
+- **2 qualifiés par groupe** 
+- **Pas de timer, pas de points, pas de nuls autorisés**
+- **Progression contrôlée** : Round par round
+
+#### Phases des Groupes :
+1. **Round 1** : Appariement aléatoire 
+2. **Round 2** : Gagnants vs Gagnants, Perdants vs Perdants
+3. **Round 3** : Match de qualification pour la 2ème place
+
+#### Qualifications :
+- **Gagnant des gagnants (Round 2)** : Qualifié direct (1er)
+- **Gagnant du match de qualification** : 2ème qualifié
+- **Winners et Losers brackets** après qualification
+
+### 4. 📊 **Classement Adaptatif**
+#### Tournois par Groupes :
+- **Classement par groupe** uniquement
+- **Statuts de qualification** visuels
+- **Résumé des qualifiés** par groupe
+- **Pas de classement général**
+
+#### Tournois Swiss/Marathon :
+- **Classement général** avec points de tournoi
+- **Système de points complexe** selon le type de victoire
+- **Statistiques complètes** (V/N/D, ratio, etc.)
+
+### 5. 🎮 **Contrôles de Progression Améliorés**
+#### Gestion Progressive des Rounds :
+- **Round par round** : Un seul round généré à la fois
+- **Vérification obligatoire** : Tous les matchs du round actuel terminés
+- **Bouton "Round Suivant"** spécifique aux tournois par groupes
+- **API intelligente** qui vérifie la progression avant d'autoriser
+
+#### Interface Arbitre :
+- **Score limité à 13** maximum
+- **Boutons +/- intégrés** dans les cartes de match
+- **Affichage des points potentiels** en temps réel
+- **Contrôles de progression** visibles selon le type de tournoi
+
+## 🔧 CHANGEMENTS TECHNIQUES
+
+### Backend :
+- `TournamentService.ts` : Nouvelle logique de groupes et système de points
+- `Tournament.ts`, `Match.ts`, `Team.ts` : Support des nouvelles fonctionnalités
+- `group-management.ts` : API pour gérer les phases de groupes
+- `next-group-round.ts` : API pour progression contrôlée des rounds
+- `ranking.ts` : API intelligente pour classements adaptés
+
+### Frontend :
+- `MatchCard.tsx` : Composant complet avec score, timer et points
+- `MatchTimer.tsx` : Timer visuel avec contrôles
+- `GroupManager.tsx` : Gestion de la progression des groupes
+- `TournamentRanking.tsx` : Classement adapté au type de tournoi
+
+## 🎯 RÈGLES SPÉCIFIQUES PAR TYPE
+
+### 📊 **Tournois par Groupes**
+- ❌ Pas de timer
+- ❌ Pas de système de points de tournoi
+- ❌ Pas de matchs nuls
+- ✅ Qualification des 2 premiers par groupe
+- ✅ Progression round par round
+- ✅ Classement par groupe uniquement
+
+### ⚡ **Tournois Swiss/Marathon**
+- ✅ Timer de 45 minutes obligatoire
+- ✅ Nouveau système de points (3/2/1)
+- ✅ Matchs nuls autorisés
+- ✅ Classement général par points
+- ✅ Appariements selon le classement
+
+## 🚀 UTILISATION POUR LES ARBITRES
+
+### Pour les Tournois par Groupes :
+1. **Créer le tournoi** avec type "GROUP"
+2. **Ajouter les équipes** (multiples de 3 ou 4 recommandé)
+3. **Démarrer le tournoi** → Génère automatiquement le Round 1
+4. **Arbitrer les matchs** du Round 1 (score max 13, pas de nuls)
+5. **Cliquer "Round Suivant"** quand tous les matchs sont terminés
+6. **Répéter** pour Round 2 et 3
+7. **Phase Knockout** générée automatiquement après qualifications
+
+### Pour les Tournois Swiss/Marathon :
+1. **Créer le tournoi** avec type "SWISS" ou "MARATHON"
+2. **Ajouter les équipes**
+3. **Démarrer le tournoi**
+4. **Utiliser le timer** de 45 minutes par match
+5. **Système de points automatique** selon le résultat
+6. **Tour suivant** généré selon le classement
+
+## 📈 BÉNÉFICES
+
+- **✅ Progression contrôlée** : Plus de rounds générés d'un coup
+- **✅ Interface intuitive** : Boutons adaptés au contexte
+- **✅ Règles respectées** : Logique spécifique par type de tournoi
+- **✅ Arbitrage facilité** : Tous les outils intégrés
+- **✅ Classements clairs** : Affichage adapté au format
+- **✅ Gestion du temps** : Timer intégré avec points automatiques 

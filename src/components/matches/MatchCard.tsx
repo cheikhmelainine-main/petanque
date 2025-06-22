@@ -93,8 +93,12 @@ export const MatchCard: React.FC<MatchCardProps> = ({
   const handleScoreChange = (team: 'team1' | 'team2', increment: number) => {
     if (status === 'COMPLETED' || disabled) return;
 
-    const newTeam1Score = team === 'team1' ? Math.max(0, localTeam1Score + increment) : localTeam1Score;
-    const newTeam2Score = team === 'team2' ? Math.max(0, localTeam2Score + increment) : localTeam2Score;
+    const newTeam1Score = team === 'team1' 
+      ? Math.max(0, Math.min(13, localTeam1Score + increment)) // Limite à 13
+      : localTeam1Score;
+    const newTeam2Score = team === 'team2' 
+      ? Math.max(0, Math.min(13, localTeam2Score + increment)) // Limite à 13
+      : localTeam2Score;
 
     setLocalTeam1Score(newTeam1Score);
     setLocalTeam2Score(newTeam2Score);

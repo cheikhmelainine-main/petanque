@@ -91,6 +91,7 @@ export class TournamentService {
     tournament.groupsCount = groups.length;
     await tournament.save();
     
+    // Ne générer que le PREMIER ROUND initialement
     for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
       const groupTeams = groups[groupIndex];
       const groupNumber = groupIndex + 1;
@@ -101,19 +102,18 @@ export class TournamentService {
         { groupNumber }
       );
       
-      // Créer les matchs de groupe selon la nouvelle logique
-      await this.generateGroupRoundMatches(tournament._id, groupTeams, groupNumber);
+      // Ne créer que le premier round
+      await this.generateGroupFirstRound(tournament._id, groupTeams, groupNumber);
     }
   }
 
-  // Nouvelle méthode pour générer les matchs de groupe selon la logique spécifiée
-  private static async generateGroupRoundMatches(tournamentId: mongoose.Types.ObjectId | unknown, teams: ITeam[], groupNumber: number): Promise<void> {
-    // Premier tour : appariement aléatoire
+  // Générer SEULEMENT le premier round de groupe
+  private static async generateGroupFirstRound(tournamentId: mongoose.Types.ObjectId | unknown, teams: ITeam[], groupNumber: number): Promise<void> {
     const shuffledTeams = this.shuffleArray([...teams]);
     const tournamentObjectId = tournamentId as mongoose.Types.ObjectId;
     
     if (teams.length === 4) {
-      // Groupe de 4 : 2 matchs en parallèle
+      // Groupe de 4 : 2 matchs en parallèle pour le round 1
       const match1 = new Match({
         tournamentId: tournamentObjectId,
         round: 1,
@@ -138,7 +138,7 @@ export class TournamentService {
       await match2.save();
       
     } else if (teams.length === 3) {
-      // Groupe de 3 : un match, un bye
+      // Groupe de 3 : un match pour le round 1
       const match1 = new Match({
         tournamentId: tournamentObjectId,
         round: 1,
@@ -152,6 +152,96 @@ export class TournamentService {
       await match1.save();
       // shuffledTeams[2] gets a bye to round 2
     }
+  }
+
+  // Méthode pour démarrer le round suivant d'un groupe spécifique
+  static async startNextGroupRound(tournamentId: string, groupNumber: number): Promise<void> {
+    // Vérifier le statut actuel du groupe
+    const currentRoundMatches = await Match.find({
+      tournamentId,
+      groupNumber,
+      roundType: RoundType.GROUP
+    }).sort({ round: -1 });
+
+    if (currentRoundMatches.length === 0) {
+      throw new Error('Aucun match trouvé pour ce groupe');
+    }
+
+    const currentRound = currentRoundMatches[0].round;
+    const currentRoundMatchesFiltered = currentRoundMatches.filter(m => m.round === currentRound);
+    
+    // Vérifier que tous les matchs du round actuel sont terminés
+    const allCompleted = currentRoundMatchesFiltered.every(m => m.status === MatchStatus.COMPLETED);
+    if (!allCompleted) {
+      throw new Error(`Tous les matchs du round ${currentRound} doivent être terminés avant de passer au suivant`);
+    }
+
+    // Générer le round suivant selon la logique
+    if (currentRound === 1) {
+      await this.generateGroupSecondRound(tournamentId, groupNumber);
+    } else if (currentRound === 2) {
+      await this.generateGroupQualificationMatch(tournamentId, groupNumber);
+    } else {
+      throw new Error('Ce groupe a déjà terminé tous ses rounds');
+    }
+  }
+
+  // Méthode pour démarrer le round suivant pour TOUS les groupes
+  static async startNextRoundAllGroups(tournamentId: string): Promise<void> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    const groupsCount = tournament.groupsCount || 0;
+    
+    for (let groupNumber = 1; groupNumber <= groupsCount; groupNumber++) {
+      try {
+        await this.startNextGroupRound(tournamentId, groupNumber);
+      } catch (error) {
+        // Continuer avec les autres groupes même si un groupe a une erreur
+        console.log(`Groupe ${groupNumber}:`, error instanceof Error ? error.message : 'Erreur inconnue');
+      }
+    }
+  }
+
+  // Vérifier si tous les groupes peuvent passer au round suivant
+  static async canStartNextRound(tournamentId: string): Promise<{ canStart: boolean, currentRound: number, completedGroups: number, totalGroups: number }> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    const groupsCount = tournament.groupsCount || 0;
+    let completedGroups = 0;
+    let currentRound = 1;
+
+    for (let groupNumber = 1; groupNumber <= groupsCount; groupNumber++) {
+      const groupMatches = await Match.find({
+        tournamentId,
+        groupNumber,
+        roundType: RoundType.GROUP
+      }).sort({ round: -1 });
+
+      if (groupMatches.length > 0) {
+        const latestRound = groupMatches[0].round;
+        currentRound = Math.max(currentRound, latestRound);
+        
+        const latestRoundMatches = groupMatches.filter(m => m.round === latestRound);
+        const allCompleted = latestRoundMatches.every(m => m.status === MatchStatus.COMPLETED);
+        
+        if (allCompleted) {
+          completedGroups++;
+        }
+      }
+    }
+
+    return {
+      canStart: completedGroups === groupsCount,
+      currentRound,
+      completedGroups,
+      totalGroups: groupsCount
+    };
   }
 
   // Générer le deuxième tour de groupe après les résultats du premier
@@ -564,9 +654,136 @@ export class TournamentService {
 
   // Obtenir le classement d'un tournoi
   static async getTournamentRanking(tournamentId: string): Promise<ITeam[]> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    // Pour les tournois par groupes, utiliser un classement spécifique
+    if (tournament.type === TournamentType.GROUP) {
+      return await this.getGroupTournamentRanking(tournamentId);
+    }
+
+    // Pour Swiss et Marathon, utiliser le classement par points
     return await Team.find({ tournamentId })
       .sort({ tournamentPoints: -1, wins: -1, name: 1 })
       .populate('members');
+  }
+
+  // Classement spécifique pour les tournois par groupes
+  static async getGroupTournamentRanking(tournamentId: string): Promise<any[]> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    const groupsCount = tournament.groupsCount || 0;
+    const groupsRanking = [];
+
+    for (let groupNumber = 1; groupNumber <= groupsCount; groupNumber++) {
+      // Récupérer les équipes du groupe
+      const groupTeams = await Team.find({ tournamentId, groupNumber }).lean();
+      
+      // Récupérer tous les matchs du groupe
+      const groupMatches = await Match.find({ 
+        tournamentId, 
+        groupNumber,
+        status: MatchStatus.COMPLETED 
+      }).lean();
+
+      // Calculer les statistiques pour chaque équipe
+      const teamsWithStats = groupTeams.map(team => {
+        const teamMatches = groupMatches.filter(match => 
+          match.team1Id.toString() === team._id.toString() || 
+          match.team2Id?.toString() === team._id.toString()
+        );
+
+        const wins = teamMatches.filter(match => 
+          match.winnerTeamId && match.winnerTeamId.toString() === team._id.toString()
+        ).length;
+
+        const losses = teamMatches.filter(match => 
+          match.winnerTeamId && match.winnerTeamId.toString() !== team._id.toString()
+        ).length;
+
+        const matchesPlayed = teamMatches.length;
+
+        // Calculer les points marqués et encaissés
+        let pointsFor = 0;
+        let pointsAgainst = 0;
+
+        teamMatches.forEach(match => {
+          if (match.team1Id.toString() === team._id.toString()) {
+            pointsFor += match.team1Score || 0;
+            pointsAgainst += match.team2Score || 0;
+          } else {
+            pointsFor += match.team2Score || 0;
+            pointsAgainst += match.team1Score || 0;
+          }
+        });
+
+        const pointsDifference = pointsFor - pointsAgainst;
+
+        // Déterminer le statut de qualification
+        let qualificationStatus = 'eliminated';
+        let qualificationRank = null;
+
+        if (team.isQualified) {
+          qualificationStatus = 'qualified';
+          qualificationRank = team.qualificationRank || 1;
+        }
+
+        return {
+          ...team,
+          wins,
+          losses,
+          matchesPlayed,
+          pointsFor,
+          pointsAgainst,
+          pointsDifference,
+          qualificationStatus,
+          qualificationRank
+        };
+      });
+
+      // Trier les équipes : d'abord par nombre de victoires, puis par différence de points
+      const sortedTeams = teamsWithStats.sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        return b.pointsDifference - a.pointsDifference;
+      });
+
+      // Assigner les rangs dans le groupe
+      sortedTeams.forEach((team, index) => {
+        team.groupRank = index + 1;
+        // Les 2 premiers sont normalement qualifiés
+        if (index < 2 && !team.isQualified) {
+          team.qualificationStatus = 'should_qualify';
+        }
+      });
+
+      groupsRanking.push({
+        groupNumber,
+        teams: sortedTeams,
+        status: this.getGroupStatus(sortedTeams, groupMatches)
+      });
+    }
+
+    return groupsRanking;
+  }
+
+  // Déterminer le statut d'un groupe
+  private static getGroupStatus(teams: any[], matches: any[]) {
+    const totalTeams = teams.length;
+    const expectedMatches = totalTeams === 4 ? 4 : 2; // 4 matchs pour groupe de 4, 2 pour groupe de 3
+    const completedMatches = matches.length;
+
+    if (teams.every(team => team.qualificationStatus === 'qualified')) {
+      return 'completed';
+    } else if (completedMatches >= expectedMatches) {
+      return 'ready_for_qualification';
+    } else {
+      return 'in_progress';
+    }
   }
 
   // Créer des groupes d'équipes

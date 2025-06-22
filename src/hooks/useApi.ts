@@ -119,6 +119,26 @@ export const useKnockoutPhase = () => {
   });
 };
 
+export const useNextGroupRound = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const response = await api.post(`/tournament/${tournamentId}/next-group-round`);
+      return response.data;
+    },
+    onSuccess: (_, tournamentId) => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['tournament', tournamentId] });
+      toast.success('Round suivant démarré !');
+    },
+    onError: (error: unknown) => {
+      const message = (error as any)?.response?.data?.message || 'Erreur lors du démarrage du round suivant';
+      toast.error(message);
+    },
+  });
+};
+
 // Hook pour les équipes
 export const useTeams = (tournamentId?: string) => {
   return useQuery<Team[]>({
