@@ -14,10 +14,17 @@ export class TournamentService {
     rounds?: number;
     startDate: Date;
     createdById: string;
+    groupSize?: number;
+    hasTimedMatches?: boolean;
+    matchTimeLimit?: number;
   }): Promise<ITournament> {
     const tournament = new Tournament({
       ...data,
-      createdById: new mongoose.Types.ObjectId(data.createdById)
+      createdById: new mongoose.Types.ObjectId(data.createdById),
+      hasTimedMatches: data.hasTimedMatches ?? (data.type === TournamentType.SWISS || data.type === TournamentType.MARATHON),
+      matchTimeLimit: data.matchTimeLimit ?? 45,
+      groupSize: data.groupSize ?? 4,
+      qualifiersPerGroup: 2
     });
     
     return await tournament.save();
@@ -77,10 +84,12 @@ export class TournamentService {
     }
   }
 
-  // Générer les matchs pour le système de groupes
+  // Générer les matchs pour le système de groupes (NOUVELLE LOGIQUE)
   private static async generateGroupMatches(tournament: ITournament, teams: ITeam[]): Promise<void> {
-    const groupSize = tournament.format === TeamFormat.SINGLES ? 4 : 3;
+    const groupSize = tournament.groupSize || 4;
     const groups = this.createGroups(teams, groupSize);
+    tournament.groupsCount = groups.length;
+    await tournament.save();
     
     for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
       const groupTeams = groups[groupIndex];
@@ -92,36 +101,404 @@ export class TournamentService {
         { groupNumber }
       );
       
-      // Créer les matchs de groupe
-      for (let i = 0; i < groupTeams.length; i++) {
-        for (let j = i + 1; j < groupTeams.length; j++) {
-          const match = new Match({
-            tournamentId: tournament._id,
-            round: 1,
-            roundType: RoundType.GROUP,
-            groupNumber,
-            team1Id: groupTeams[i]._id,
-            team2Id: groupTeams[j]._id
-          });
-          await match.save();
+      // Créer les matchs de groupe selon la nouvelle logique
+      await this.generateGroupRoundMatches(tournament._id, groupTeams, groupNumber);
+    }
+  }
+
+  // Nouvelle méthode pour générer les matchs de groupe selon la logique spécifiée
+  private static async generateGroupRoundMatches(tournamentId: mongoose.Types.ObjectId | unknown, teams: ITeam[], groupNumber: number): Promise<void> {
+    // Premier tour : appariement aléatoire
+    const shuffledTeams = this.shuffleArray([...teams]);
+    const tournamentObjectId = tournamentId as mongoose.Types.ObjectId;
+    
+    if (teams.length === 4) {
+      // Groupe de 4 : 2 matchs en parallèle
+      const match1 = new Match({
+        tournamentId: tournamentObjectId,
+        round: 1,
+        roundType: RoundType.GROUP,
+        groupNumber,
+        team1Id: shuffledTeams[0]._id,
+        team2Id: shuffledTeams[1]._id,
+        isTimedMatch: false // Pas de limite de temps pour les groupes
+      });
+      
+      const match2 = new Match({
+        tournamentId: tournamentObjectId,
+        round: 1,
+        roundType: RoundType.GROUP,
+        groupNumber,
+        team1Id: shuffledTeams[2]._id,
+        team2Id: shuffledTeams[3]._id,
+        isTimedMatch: false
+      });
+      
+      await match1.save();
+      await match2.save();
+      
+    } else if (teams.length === 3) {
+      // Groupe de 3 : un match, un bye
+      const match1 = new Match({
+        tournamentId: tournamentObjectId,
+        round: 1,
+        roundType: RoundType.GROUP,
+        groupNumber,
+        team1Id: shuffledTeams[0]._id,
+        team2Id: shuffledTeams[1]._id,
+        isTimedMatch: false
+      });
+      
+      await match1.save();
+      // shuffledTeams[2] gets a bye to round 2
+    }
+  }
+
+  // Générer le deuxième tour de groupe après les résultats du premier
+  static async generateGroupSecondRound(tournamentId: string, groupNumber: number): Promise<void> {
+    const firstRoundMatches = await Match.find({
+      tournamentId,
+      groupNumber,
+      round: 1,
+      status: MatchStatus.COMPLETED
+    }).populate(['team1Id', 'team2Id']);
+
+    if (firstRoundMatches.length === 0) {
+      throw new Error('Tous les matchs du premier tour doivent être terminés');
+    }
+
+    const winners: mongoose.Types.ObjectId[] = [];
+    const losers: mongoose.Types.ObjectId[] = [];
+
+    firstRoundMatches.forEach(match => {
+      if (match.winnerTeamId) {
+        winners.push(match.winnerTeamId);
+        // L'autre équipe est le perdant
+        const loserTeamId = match.winnerTeamId.equals(match.team1Id._id) ? match.team2Id._id : match.team1Id._id;
+        losers.push(loserTeamId);
+      }
+    });
+
+    // Gagnant vs Gagnant
+    if (winners.length >= 2) {
+      const winnersMatch = new Match({
+        tournamentId,
+        round: 2,
+        roundType: RoundType.GROUP,
+        groupNumber,
+        team1Id: winners[0],
+        team2Id: winners[1],
+        isTimedMatch: false
+      });
+      await winnersMatch.save();
+    }
+
+    // Perdant vs Perdant
+    if (losers.length >= 2) {
+      const losersMatch = new Match({
+        tournamentId,
+        round: 2,
+        roundType: RoundType.GROUP,
+        groupNumber,
+        team1Id: losers[0],
+        team2Id: losers[1],
+        isTimedMatch: false
+      });
+      await losersMatch.save();
+    }
+  }
+
+  // Générer le match de qualification de groupe (3ème place)
+  static async generateGroupQualificationMatch(tournamentId: string, groupNumber: number): Promise<void> {
+    // Récupérer tous les matchs du groupe
+    const groupMatches = await Match.find({
+      tournamentId,
+      groupNumber,
+      roundType: RoundType.GROUP,
+      status: MatchStatus.COMPLETED
+    });
+
+    if (groupMatches.length < 2) {
+      throw new Error('Pas assez de matchs terminés pour générer le match de qualification');
+    }
+
+    // Identifier les équipes et leurs résultats
+    const teamResults = new Map<string, { wins: number, teamId: mongoose.Types.ObjectId }>();
+
+    groupMatches.forEach(match => {
+      const team1Id = match.team1Id.toString();
+      const team2Id = match.team2Id.toString();
+
+      if (!teamResults.has(team1Id)) {
+        teamResults.set(team1Id, { wins: 0, teamId: match.team1Id });
+      }
+      if (!teamResults.has(team2Id)) {
+        teamResults.set(team2Id, { wins: 0, teamId: match.team2Id });
+      }
+
+      if (match.winnerTeamId) {
+        const winnerId = match.winnerTeamId.toString();
+        const winnerResult = teamResults.get(winnerId);
+        if (winnerResult) {
+          winnerResult.wins++;
         }
+      }
+    });
+
+    // Trier les équipes par nombre de victoires
+    const sortedTeams = Array.from(teamResults.values()).sort((a, b) => b.wins - a.wins);
+
+    if (sortedTeams.length >= 3) {
+      // Le gagnant avec le plus de victoires se qualifie directement
+      const firstPlace = sortedTeams[0];
+      const secondPlace = sortedTeams[1];
+      const thirdPlace = sortedTeams[2];
+
+      // Match de qualification entre 2e et 3e place pour la 2e qualification
+      const qualificationMatch = new Match({
+        tournamentId,
+        round: 3,
+        roundType: RoundType.GROUP_QUALIFICATION,
+        groupNumber,
+        team1Id: secondPlace.teamId,
+        team2Id: thirdPlace.teamId,
+        isTimedMatch: false
+      });
+
+      await qualificationMatch.save();
+
+      // Marquer la première équipe comme qualifiée directement
+      await Team.findByIdAndUpdate(firstPlace.teamId, { 
+        isQualified: true,
+        qualificationRank: 1
+      });
+    }
+  }
+
+  // Générer les matchs knockout après la phase de groupes
+  static async generateKnockoutFromGroups(tournamentId: string): Promise<void> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    // Récupérer toutes les équipes qualifiées
+    const qualifiedTeams = await Team.find({
+      tournamentId: new mongoose.Types.ObjectId(tournamentId),
+      isQualified: true
+    }).sort({ qualificationRank: 1 });
+
+    if (qualifiedTeams.length < 4) {
+      throw new Error('Pas assez d\'équipes qualifiées pour commencer les phases éliminatoires');
+    }
+
+    // Créer le bracket winners et losers
+    await this.generateWinnersAndLosersBrackets(tournamentId, qualifiedTeams);
+  }
+
+  // Générer les brackets winners et losers
+  private static async generateWinnersAndLosersBrackets(tournamentId: string, teams: ITeam[]): Promise<void> {
+    // Créer les matchs du premier tour du winners bracket
+    const shuffledTeams = this.shuffleArray([...teams]);
+    
+    for (let i = 0; i < shuffledTeams.length; i += 2) {
+      if (i + 1 < shuffledTeams.length) {
+        const winnersMatch = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round: 1,
+          roundType: RoundType.WINNERS,
+          team1Id: shuffledTeams[i]._id,
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: false
+        });
+        
+        await winnersMatch.save();
+      }
+    }
+  }
+
+  // Démarrer le timer d'un match (amélioré)
+  static async startMatchTimer(matchId: string): Promise<IMatch> {
+    const match = await Match.findById(matchId).populate('tournamentId');
+    if (!match) {
+      throw new Error('Match non trouvé');
+    }
+
+    const tournament = match.tournamentId as ITournament;
+    
+    // Seuls les tournois Swiss et Marathon ont des timers
+    if (tournament.type !== TournamentType.SWISS && tournament.type !== TournamentType.MARATHON) {
+      throw new Error('Ce type de tournoi ne supporte pas les timers');
+    }
+
+    match.status = MatchStatus.ONGOING;
+    match.timerStartedAt = new Date();
+    match.startedAt = new Date();
+    match.isTimedMatch = true;
+    match.timeLimit = tournament.matchTimeLimit || 45;
+    
+    return await match.save();
+  }
+
+  // Mettre à jour le score d'un match avec gestion du temps (LOGIQUE MISE À JOUR)
+  static async updateMatchScore(matchId: string, team1Score: number, team2Score: number, finishedBeforeTimeLimit?: boolean): Promise<IMatch> {
+    const match = await Match.findById(matchId).populate('tournamentId');
+    if (!match) {
+      throw new Error('Match non trouvé');
+    }
+
+    const tournament = match.tournamentId as ITournament;
+    
+    match.team1Score = team1Score;
+    match.team2Score = team2Score;
+    match.finishedBeforeTimeLimit = finishedBeforeTimeLimit ?? false;
+    match.status = MatchStatus.COMPLETED;
+    match.endedAt = new Date();
+
+    // Déterminer le gagnant
+    let winnerTeamId: mongoose.Types.ObjectId | undefined;
+    let team1TournamentPoints = 0;
+    let team2TournamentPoints = 0;
+
+    if (tournament.type === TournamentType.GROUP) {
+      // Pour les groupes : pas de matchs nuls, pas de système de points
+      if (team1Score > team2Score) {
+        winnerTeamId = match.team1Id;
+      } else if (team2Score > team1Score) {
+        winnerTeamId = match.team2Id;
+      } else {
+        // En cas d'égalité dans un groupe, on peut forcer une victoire à l'équipe 1 ou demander un tie-break
+        // Pour l'instant, on donne la victoire à l'équipe 1
+        winnerTeamId = match.team1Id;
+      }
+    } else {
+      // Pour Swiss et Marathon : nouveau système de points
+      if (team1Score === 13 || team2Score === 13) {
+        // Victoire avec 13 points = 3 points
+        if (team1Score === 13) {
+          winnerTeamId = match.team1Id;
+          team1TournamentPoints = 3;
+          team2TournamentPoints = 0;
+        } else {
+          winnerTeamId = match.team2Id;
+          team1TournamentPoints = 0;
+          team2TournamentPoints = 3;
+        }
+      } else {
+        // Match fini dans les temps sans atteindre 13
+        if (team1Score === team2Score) {
+          // Match nul dans le temps = 1 point chacun
+          team1TournamentPoints = 1;
+          team2TournamentPoints = 1;
+        } else {
+          // Victoire dans le temps = 2 points
+          if (team1Score > team2Score) {
+            winnerTeamId = match.team1Id;
+            team1TournamentPoints = 2;
+            team2TournamentPoints = 0;
+          } else {
+            winnerTeamId = match.team2Id;
+            team1TournamentPoints = 0;
+            team2TournamentPoints = 2;
+          }
+        }
+      }
+    }
+
+    match.winnerTeamId = winnerTeamId;
+    match.team1TournamentPoints = team1TournamentPoints;
+    match.team2TournamentPoints = team2TournamentPoints;
+
+    await match.save();
+
+    // Mettre à jour les statistiques des équipes
+    await this.updateTeamStats(match);
+
+    // Vérifier si on peut générer les matchs suivants pour les groupes
+    if (tournament.type === TournamentType.GROUP && match.roundType === RoundType.GROUP) {
+      const tournamentIdString = (tournament._id as mongoose.Types.ObjectId).toString();
+      await this.checkAndGenerateNextGroupRound(tournamentIdString, match.groupNumber!);
+    }
+
+    return match;
+  }
+
+  // Vérifier et générer le prochain tour de groupe si nécessaire
+  private static async checkAndGenerateNextGroupRound(tournamentId: string, groupNumber: number): Promise<void> {
+    const completedRound1Matches = await Match.find({
+      tournamentId,
+      groupNumber,
+      round: 1,
+      roundType: RoundType.GROUP,
+      status: MatchStatus.COMPLETED
+    });
+
+    const totalRound1Matches = await Match.find({
+      tournamentId,
+      groupNumber,
+      round: 1,
+      roundType: RoundType.GROUP
+    });
+
+    // Si tous les matchs du round 1 sont terminés, générer le round 2
+    if (completedRound1Matches.length === totalRound1Matches.length && completedRound1Matches.length > 0) {
+      const existingRound2Matches = await Match.find({
+        tournamentId,
+        groupNumber,
+        round: 2,
+        roundType: RoundType.GROUP
+      });
+
+      if (existingRound2Matches.length === 0) {
+        await this.generateGroupSecondRound(tournamentId, groupNumber);
+      }
+    }
+
+    // Vérifier si on peut générer le match de qualification
+    const completedRound2Matches = await Match.find({
+      tournamentId,
+      groupNumber,
+      round: 2,
+      roundType: RoundType.GROUP,
+      status: MatchStatus.COMPLETED
+    });
+
+    const totalRound2Matches = await Match.find({
+      tournamentId,
+      groupNumber,
+      round: 2,
+      roundType: RoundType.GROUP
+    });
+
+    if (completedRound2Matches.length === totalRound2Matches.length && completedRound2Matches.length > 0) {
+      const existingQualificationMatches = await Match.find({
+        tournamentId,
+        groupNumber,
+        roundType: RoundType.GROUP_QUALIFICATION
+      });
+
+      if (existingQualificationMatches.length === 0) {
+        await this.generateGroupQualificationMatch(tournamentId, groupNumber);
       }
     }
   }
 
   // Générer les matchs pour le système suisse
   private static async generateSwissMatches(tournament: ITournament, teams: ITeam[]): Promise<void> {
+    // Première ronde : appariements aléatoires
     const shuffledTeams = this.shuffleArray([...teams]);
+    const tournamentId = tournament._id as mongoose.Types.ObjectId;
     
-    // Premier tour : appariement aléatoire
     for (let i = 0; i < shuffledTeams.length; i += 2) {
       if (i + 1 < shuffledTeams.length) {
         const match = new Match({
-          tournamentId: tournament._id,
+          tournamentId,
           round: 1,
-          roundType: RoundType.KNOCKOUT,
+          roundType: RoundType.SWISS,
           team1Id: shuffledTeams[i]._id,
-          team2Id: shuffledTeams[i + 1]._id
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: tournament.hasTimedMatches,
+          timeLimit: tournament.matchTimeLimit
         });
         await match.save();
       }
@@ -130,312 +507,78 @@ export class TournamentService {
 
   // Générer les matchs pour le système marathon
   private static async generateMarathonMatches(tournament: ITournament, teams: ITeam[]): Promise<void> {
-    // Identique au suisse mais complètement aléatoire
-    await this.generateSwissMatches(tournament, teams);
-  }
-
-  // Mettre à jour le score d'un match avec gestion du temps
-  static async updateMatchScore(matchId: string, team1Score: number, team2Score: number, finishedBeforeTimeLimit?: boolean): Promise<IMatch> {
-    const match = await Match.findById(matchId).populate(['team1Id', 'team2Id']);
-    if (!match) {
-      throw new Error('Match non trouvé');
-    }
-
-    match.team1Score = team1Score;
-    match.team2Score = team2Score;
-    match.status = MatchStatus.COMPLETED;
-    match.endedAt = new Date();
-
-    // Déterminer le gagnant
-    if (team1Score > team2Score) {
-      match.winnerTeamId = match.team1Id;
-    } else if (team2Score > team1Score) {
-      match.winnerTeamId = match.team2Id;
-    }
-
-    await match.save();
-
-    // Mettre à jour les points des équipes avec gestion du temps
-    await this.updateTeamStats(match, finishedBeforeTimeLimit);
-
-    return match;
-  }
-
-  // Générer le tour suivant pour un tournoi Swiss
-  static async generateNextRound(tournamentId: string): Promise<IMatch[]> {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      throw new Error('Tournoi non trouvé');
-    }
-
-    // Vérifier qu'on n'a pas dépassé le nombre de tours
-    const currentRound = await Match.findOne({ tournamentId }).sort({ round: -1 });
-    const nextRoundNumber = currentRound ? currentRound.round + 1 : 1;
+    // Tous contre tous
+    const tournamentId = tournament._id as mongoose.Types.ObjectId;
     
-    if (tournament.rounds && nextRoundNumber > tournament.rounds) {
-      throw new Error('Tous les tours Swiss sont terminés');
-    }
-
-    // Obtenir le classement actuel
-    const teams = await Team.find({ tournamentId })
-      .sort({ points: -1, scoreDiff: -1 });
-
-    const matches: IMatch[] = [];
-    
-    // Appariement 1er vs 2ème, 3ème vs 4ème, etc.
-    for (let i = 0; i < teams.length; i += 2) {
-      if (i + 1 < teams.length) {
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
         const match = new Match({
           tournamentId,
-          round: nextRoundNumber,
-          roundType: RoundType.SWISS,
+          round: 1,
+          roundType: RoundType.SWISS, // Marathon utilise le même type
           team1Id: teams[i]._id,
-          team2Id: teams[i + 1]._id
+          team2Id: teams[j]._id,
+          isTimedMatch: tournament.hasTimedMatches,
+          timeLimit: tournament.matchTimeLimit
         });
-        
-        const savedMatch = await match.save();
-        matches.push(savedMatch);
+        await match.save();
       }
     }
-
-    return matches;
-  }
-
-  // Générer la phase d'élimination avec brackets des gagnants et perdants
-  static async generateKnockoutStage(tournamentId: string): Promise<{ winnersMatches: IMatch[], losersMatches: IMatch[] }> {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      throw new Error('Tournoi non trouvé');
-    }
-
-    // Obtenir le classement final Swiss
-    const allTeams = await Team.find({ tournamentId })
-      .sort({ points: -1, scoreDiff: -1 });
-
-    // Top 16 pour le bracket des gagnants
-    const winnersTeams = allTeams.slice(0, 16);
-    // 16 suivants pour le bracket des perdants
-    const losersTeams = allTeams.slice(16, 32);
-
-    const winnersMatches: IMatch[] = [];
-    const losersMatches: IMatch[] = [];
-    const currentRound = await Match.findOne({ tournamentId }).sort({ round: -1 });
-    const knockoutRound = currentRound ? currentRound.round + 1 : 6;
-
-    // Créer les 8èmes de finale du bracket des gagnants
-    for (let i = 0; i < winnersTeams.length; i += 2) {
-      if (i + 1 < winnersTeams.length) {
-        const match = new Match({
-          tournamentId,
-          round: knockoutRound,
-          roundType: RoundType.WINNERS,
-          team1Id: winnersTeams[i]._id,
-          team2Id: winnersTeams[i + 1]._id
-        });
-        
-        const savedMatch = await match.save();
-        winnersMatches.push(savedMatch);
-      }
-    }
-
-    // Créer les 8èmes de finale du bracket des perdants
-    for (let i = 0; i < losersTeams.length; i += 2) {
-      if (i + 1 < losersTeams.length) {
-        const match = new Match({
-          tournamentId,
-          round: knockoutRound,
-          roundType: RoundType.LOSERS,
-          team1Id: losersTeams[i]._id,
-          team2Id: losersTeams[i + 1]._id
-        });
-        
-        const savedMatch = await match.save();
-        losersMatches.push(savedMatch);
-      }
-    }
-
-    return { winnersMatches, losersMatches };
-  }
-
-  // Générer le tour suivant du knockout
-  static async generateNextKnockoutRound(tournamentId: string, roundType: RoundType): Promise<IMatch[]> {
-    // Obtenir le tour précédent pour ce roundType spécifique
-    const previousRound = await Match.findOne({ 
-      tournamentId, 
-      roundType 
-    }).sort({ round: -1 });
-    
-    if (!previousRound) {
-      throw new Error(`Aucun tour précédent trouvé pour le type ${roundType}`);
-    }
-
-    const currentRound = previousRound.round;
-    const nextRound = currentRound + 1;
-
-    // Obtenir tous les matchs du tour précédent pour ce roundType
-    const previousMatches = await Match.find({ 
-      tournamentId, 
-      round: currentRound,
-      roundType,
-      status: MatchStatus.COMPLETED,
-      winnerTeamId: { $exists: true }
-    }).populate('winnerTeamId team1Id team2Id');
-
-    if (previousMatches.length === 0) {
-      throw new Error(`Aucun match complété trouvé pour le round ${currentRound} du type ${roundType}`);
-    }
-
-    // Obtenir les participants pour le tour suivant
-    const participants: mongoose.Types.ObjectId[] = [];
-    
-    // Pour le bracket des gagnants, prendre les gagnants
-    if (roundType === RoundType.WINNERS) {
-      for (const match of previousMatches) {
-        if (match.winnerTeamId) {
-          participants.push(match.winnerTeamId);
-        }
-      }
-    }
-    
-    // Pour le bracket des perdants, prendre les gagnants du bracket perdants + perdants du bracket gagnants
-    else if (roundType === RoundType.LOSERS) {
-      // Gagnants du bracket perdants
-      for (const match of previousMatches) {
-        if (match.winnerTeamId) {
-          participants.push(match.winnerTeamId);
-        }
-      }
-      
-      // Ajouter les perdants du même round du bracket gagnants
-      const winnersMatches = await Match.find({ 
-        tournamentId, 
-        round: currentRound,
-        roundType: RoundType.WINNERS,
-        status: MatchStatus.COMPLETED,
-        winnerTeamId: { $exists: true }
-      }).populate('winnerTeamId team1Id team2Id');
-
-      for (const match of winnersMatches) {
-        if (match.winnerTeamId) {
-          // Ajouter le perdant
-          const loserId = match.team1Id._id.equals(match.winnerTeamId) 
-            ? match.team2Id._id 
-            : match.team1Id._id;
-          participants.push(loserId);
-        }
-      }
-    }
-
-    if (participants.length < 2) {
-      throw new Error(`Pas assez de participants pour le tour suivant (${participants.length} équipes)`);
-    }
-
-    // Créer les matchs du tour suivant
-    const matches: IMatch[] = [];
-    
-    for (let i = 0; i < participants.length; i += 2) {
-      if (i + 1 < participants.length) {
-        const match = new Match({
-          tournamentId,
-          round: nextRound,
-          roundType,
-          team1Id: participants[i],
-          team2Id: participants[i + 1]
-        });
-        
-        const savedMatch = await match.save();
-        matches.push(savedMatch);
-      }
-    }
-
-    return matches;
   }
 
   // Mettre à jour les statistiques des équipes
-  private static async updateTeamStats(match: IMatch, finishedBeforeTimeLimit?: boolean): Promise<void> {
-    const tournament = await Tournament.findById(match.tournamentId);
-    if (!tournament) return;
+  private static async updateTeamStats(match: IMatch): Promise<void> {
+    const team1Update: { $inc?: Record<string, number> } = {};
+    const team2Update: { $inc?: Record<string, number> } = {};
 
-    let pointsTeam1 = 0;
-    let pointsTeam2 = 0;
-
-    // Vérifier si c'est une phase Swiss ou knockout
-    const isSwissPhase = match.roundType === RoundType.SWISS;
-
-    if (isSwissPhase && (tournament.type === TournamentType.SWISS || tournament.type === TournamentType.MARATHON)) {
-      // Système de points pour Swiss/Marathon avec gestion du temps
-      if (match.team1Score! > match.team2Score!) {
-        pointsTeam1 = finishedBeforeTimeLimit ? 3 : 2; // 3 pts avant temps, 2 pts après temps
-      } else if (match.team2Score! > match.team1Score!) {
-        pointsTeam2 = finishedBeforeTimeLimit ? 3 : 2; // 3 pts avant temps, 2 pts après temps
-      } else {
-        pointsTeam1 = 1; // 1 pt pour nul
-        pointsTeam2 = 1; // 1 pt pour nul
-      }
-
-      // Mettre à jour les équipes avec points et différentiel
-      await Team.findByIdAndUpdate(match.team1Id, {
-        $inc: {
-          points: pointsTeam1,
-          scoreDiff: (match.team1Score || 0) - (match.team2Score || 0)
-        }
-      });
-
-      await Team.findByIdAndUpdate(match.team2Id, {
-        $inc: {
-          points: pointsTeam2,
-          scoreDiff: (match.team2Score || 0) - (match.team1Score || 0)
-        }
-      });
-    } else if (isSwissPhase) {
-      // Système de groupes : 2 points pour victoire, 1 pour nul
-      if (match.team1Score! > match.team2Score!) {
-        pointsTeam1 = 2;
-      } else if (match.team2Score! > match.team1Score!) {
-        pointsTeam2 = 2;
-      } else {
-        pointsTeam1 = 1;
-        pointsTeam2 = 1;
-      }
-
-      // Mettre à jour les équipes avec points et différentiel
-      await Team.findByIdAndUpdate(match.team1Id, {
-        $inc: {
-          points: pointsTeam1,
-          scoreDiff: (match.team1Score || 0) - (match.team2Score || 0)
-        }
-      });
-
-      await Team.findByIdAndUpdate(match.team2Id, {
-        $inc: {
-          points: pointsTeam2,
-          scoreDiff: (match.team2Score || 0) - (match.team1Score || 0)
-        }
-      });
+    // Ajouter les points de tournoi
+    if (match.team1TournamentPoints) {
+      team1Update.$inc = { tournamentPoints: match.team1TournamentPoints };
     }
-    // Pour les phases knockout (WINNERS, LOSERS, KNOCKOUT), pas de mise à jour des points
-    // Seul le gagnant est déterminé pour la progression
+    if (match.team2TournamentPoints) {
+      team2Update.$inc = { tournamentPoints: match.team2TournamentPoints };
+    }
+
+    // Mettre à jour les victoires/défaites
+    if (match.winnerTeamId) {
+      if (match.winnerTeamId.equals(match.team1Id)) {
+        team1Update.$inc = { ...team1Update.$inc, wins: 1 };
+        team2Update.$inc = { ...team2Update.$inc, losses: 1 };
+      } else {
+        team2Update.$inc = { ...team2Update.$inc, wins: 1 };
+        team1Update.$inc = { ...team1Update.$inc, losses: 1 };
+      }
+    } else {
+      // Match nul
+      team1Update.$inc = { ...team1Update.$inc, draws: 1 };
+      team2Update.$inc = { ...team2Update.$inc, draws: 1 };
+    }
+
+    if (Object.keys(team1Update).length > 0) {
+      await Team.findByIdAndUpdate(match.team1Id, team1Update);
+    }
+    if (Object.keys(team2Update).length > 0) {
+      await Team.findByIdAndUpdate(match.team2Id, team2Update);
+    }
   }
 
   // Obtenir le classement d'un tournoi
   static async getTournamentRanking(tournamentId: string): Promise<ITeam[]> {
     return await Team.find({ tournamentId })
-      .sort({ points: -1, scoreDiff: -1 })
-      .populate('tournamentId');
+      .sort({ tournamentPoints: -1, wins: -1, name: 1 })
+      .populate('members');
   }
 
-  // Utilitaires
+  // Créer des groupes d'équipes
   private static createGroups<T>(items: T[], groupSize: number): T[][] {
-    const shuffled = this.shuffleArray([...items]);
     const groups: T[][] = [];
-    
-    for (let i = 0; i < shuffled.length; i += groupSize) {
-      groups.push(shuffled.slice(i, i + groupSize));
+    for (let i = 0; i < items.length; i += groupSize) {
+      groups.push(items.slice(i, i + groupSize));
     }
-    
     return groups;
   }
 
+  // Mélanger un tableau
   private static shuffleArray<T>(array: T[]): T[] {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {

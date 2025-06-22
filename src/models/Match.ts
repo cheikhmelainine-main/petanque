@@ -3,7 +3,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 export enum MatchStatus {
   PENDING = 'PENDING',
   ONGOING = 'ONGOING',
-  COMPLETED = 'COMPLETED'
+  COMPLETED = 'COMPLETED',
+  TIMED_OUT = 'TIMED_OUT'
 }
 
 export enum RoundType {
@@ -11,6 +12,7 @@ export enum RoundType {
   WINNERS = 'WINNERS',
   LOSERS = 'LOSERS',
   GROUP = 'GROUP',
+  GROUP_QUALIFICATION = 'GROUP_QUALIFICATION',
   FINAL = 'FINAL',
   KNOCKOUT = 'KNOCKOUT'
 }
@@ -24,10 +26,16 @@ export interface IMatch extends Document {
   team2Id?: mongoose.Types.ObjectId;
   team1Score?: number;
   team2Score?: number;
+  team1TournamentPoints?: number;  // Points de tournoi pour team1
+  team2TournamentPoints?: number;  // Points de tournoi pour team2
   winnerTeamId?: mongoose.Types.ObjectId;
   status: MatchStatus;
   startedAt?: Date;
   endedAt?: Date;
+  timeLimit?: number;  // Limite de temps en minutes (45 pour swiss/marathon)
+  timerStartedAt?: Date;  // Quand le timer a été démarré
+  finishedBeforeTimeLimit?: boolean;  // Si le match s'est fini avant la limite
+  isTimedMatch?: boolean;  // Si c'est un match avec limite de temps
   createdAt: Date;
 }
 
@@ -64,6 +72,14 @@ const matchSchema = new Schema<IMatch>({
   team2Score: {
     type: Number
   },
+  team1TournamentPoints: {
+    type: Number,
+    default: 0
+  },
+  team2TournamentPoints: {
+    type: Number,
+    default: 0
+  },
   winnerTeamId: {
     type: Schema.Types.ObjectId,
     ref: 'Team'
@@ -78,6 +94,21 @@ const matchSchema = new Schema<IMatch>({
   },
   endedAt: {
     type: Date
+  },
+  timeLimit: {
+    type: Number,
+    default: 45  // 45 minutes par défaut
+  },
+  timerStartedAt: {
+    type: Date
+  },
+  finishedBeforeTimeLimit: {
+    type: Boolean,
+    default: false
+  },
+  isTimedMatch: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,

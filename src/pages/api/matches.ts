@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { TournamentService } from '../../services/TournamentService';
-import Match, { MatchStatus } from '../../models/Match';
+import Match from '../../models/Match';
 import connectDB from '../../lib/mongodb';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -16,78 +16,102 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).json({ message: 'Méthode non autorisée' });
     }
   } catch (error) {
-    console.error('Erreur API matchs:', error);
+    console.error('❌ Erreur API matchs:', error);
     return res.status(500).json({ message: 'Erreur serveur interne' });
   }
 }
 
 async function getMatches(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { tournamentId, round, status } = req.query;
+    const { tournamentId, round } = req.query;
     
-    const filter: any = {};
-    if (tournamentId) filter.tournamentId = tournamentId;
-    if (round) filter.round = parseInt(round as string);
-    if (status) filter.status = status;
-
+    let filter: any = {};
+    
+    if (tournamentId) {
+      filter.tournamentId = tournamentId;
+    }
+    
+    if (round) {
+      filter.round = parseInt(round as string);
+    }
+    
     const matches = await Match.find(filter)
       .populate('team1Id', 'name')
       .populate('team2Id', 'name')
       .populate('winnerTeamId', 'name')
-      .populate('tournamentId', 'name type')
       .sort({ round: 1, createdAt: 1 });
     
     return res.status(200).json(matches);
   } catch (error) {
+    console.error('❌ Erreur récupération matchs:', error);
     return res.status(500).json({ message: 'Erreur lors de la récupération des matchs' });
   }
 }
 
 async function updateMatch(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { matchId, team1Score, team2Score, action } = req.body;
+    console.log('🔍 Action match reçue:', req.body);
+    
+    const { action, matchId, team1Score, team2Score, finishedBeforeTimeLimit } = req.body;
 
-    if (!matchId) {
-      return res.status(400).json({ message: 'ID du match requis' });
+    if (!action || !matchId) {
+      console.log('❌ Action ou matchId manquant');
+      return res.status(400).json({ message: 'Action et matchId requis' });
     }
 
-    if (action === 'start') {
-      const match = await Match.findByIdAndUpdate(
-        matchId,
-        { 
-          status: MatchStatus.ONGOING,
-          startedAt: new Date()
-        },
-        { new: true }
-      );
+    let updatedMatch;
 
-      if (!match) {
-        return res.status(404).json({ message: 'Match non trouvé' });
-      }
+    switch (action) {
+      case 'update_score':
+        if (team1Score === undefined || team2Score === undefined) {
+          return res.status(400).json({ message: 'Scores requis pour cette action' });
+        }
+        
+        console.log('✅ Mise à jour du score...');
+        updatedMatch = await TournamentService.updateMatchScore(
+          matchId,
+          team1Score,
+          team2Score,
+          finishedBeforeTimeLimit
+        );
+        break;
 
-      return res.status(200).json({
-        message: 'Match démarré avec succès',
-        match
-      });
+      case 'start_timer':
+        console.log('✅ Démarrage du timer...');
+        updatedMatch = await TournamentService.startMatchTimer(matchId);
+        break;
+
+      case 'end_timer':
+        console.log('✅ Arrêt du timer...');
+        const match = await Match.findById(matchId);
+        if (!match) {
+          return res.status(404).json({ message: 'Match non trouvé' });
+        }
+        
+        // Marquer le match comme fini par temps limite si pas de score
+        if (match.team1Score === undefined || match.team2Score === undefined) {
+          match.status = 'TIMED_OUT';
+        }
+        match.endedAt = new Date();
+        updatedMatch = await match.save();
+        break;
+
+      default:
+        return res.status(400).json({ message: 'Action non reconnue' });
     }
 
-    if (action === 'update_score') {
-      if (typeof team1Score !== 'number' || typeof team2Score !== 'number') {
-        return res.status(400).json({ message: 'Scores requis' });
-      }
+    const populatedMatch = await Match.findById(updatedMatch._id)
+      .populate('team1Id', 'name')
+      .populate('team2Id', 'name')
+      .populate('winnerTeamId', 'name');
 
-      const { finishedBeforeTimeLimit } = req.body;
-      const match = await TournamentService.updateMatchScore(matchId, team1Score, team2Score, finishedBeforeTimeLimit);
-      
-      return res.status(200).json({
-        message: 'Score mis à jour avec succès',
-        match
-      });
-    }
-
-    return res.status(400).json({ message: 'Action invalide' });
+    console.log('✅ Match mis à jour:', populatedMatch._id);
+    return res.status(200).json(populatedMatch);
   } catch (error) {
-    console.error('Erreur mise à jour match:', error);
-    return res.status(500).json({ message: 'Erreur lors de la mise à jour du match' });
+    console.error('❌ Erreur mise à jour match:', error);
+    return res.status(500).json({ 
+      message: 'Erreur lors de la mise à jour du match',
+      error: error instanceof Error ? error.message : 'Erreur inconnue'
+    });
   }
 } 

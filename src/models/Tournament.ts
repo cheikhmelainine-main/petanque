@@ -28,6 +28,15 @@ export interface ITournament extends Document {
   endDate?: Date;
   createdAt: Date;
   createdById: mongoose.Types.ObjectId;
+  
+  // Configuration pour les tournois GROUP
+  groupSize?: number;  // 3 ou 4 équipes par groupe
+  groupsCount?: number;  // Nombre de groupes
+  qualifiersPerGroup?: number;  // Nombre de qualifiés par groupe (default: 2)
+  
+  // Configuration pour les matchs temporisés
+  hasTimedMatches?: boolean;  // Si les matchs ont une limite de temps
+  matchTimeLimit?: number;  // Limite de temps en minutes (default: 45)
 }
 
 const tournamentSchema = new Schema<ITournament>({
@@ -68,6 +77,31 @@ const tournamentSchema = new Schema<ITournament>({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  
+  // Configuration pour les tournois GROUP
+  groupSize: {
+    type: Number,
+    default: 4,
+    min: 3,
+    max: 4
+  },
+  groupsCount: {
+    type: Number
+  },
+  qualifiersPerGroup: {
+    type: Number,
+    default: 2
+  },
+  
+  // Configuration pour les matchs temporisés
+  hasTimedMatches: {
+    type: Boolean,
+    default: true
+  },
+  matchTimeLimit: {
+    type: Number,
+    default: 45
   }
 });
 

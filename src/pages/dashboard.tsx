@@ -1,121 +1,206 @@
-import { GetServerSideProps } from 'next'
-import { getSession } from 'next-auth/react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Trophy, Users, Calendar, BarChart3 } from 'lucide-react'
+import React from 'react';
+import { GetServerSideProps } from 'next';
+import { getSession } from 'next-auth/react';
+import { QueryClient, dehydrate } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
+import { 
+  Trophy, 
+  Users, 
+  Calendar, 
+  TrendingUp,
+  Plus,
+  Activity
+} from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { useTournaments, useTeams } from '../hooks/useApi';
+import Link from 'next/link';
 
-export default function Dashboard() {
+interface StatsCardProps {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+  trend?: number;
+  color?: string;
+}
+
+const StatsCard: React.FC<StatsCardProps> = ({ 
+  title, 
+  value, 
+  icon: Icon, 
+  description, 
+  trend,
+  color = 'blue'
+}) => {
   return (
-    <>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Tableau de bord</h1>
-        <p className="text-muted-foreground">
-          Vue d&apos;ensemble de votre club de pétanque
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tournois actifs</CardTitle>
-            <Trophy className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">+1 ce mois</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Joueurs inscrits</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-muted-foreground">+3 cette semaine</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Parties jouées</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">156</div>
-            <p className="text-xs text-muted-foreground">+12 cette semaine</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Prochains événements</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">2</div>
-            <p className="text-xs text-muted-foreground">Cette semaine</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Activité récente</CardTitle>
-          <CardDescription>
-            Les dernières activités de votre club
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">Nouveau tournoi créé</p>
-                <p className="text-xs text-muted-foreground">Championnat d&apos;été 2024</p>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+    >
+      <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Icon className={`h-6 w-6 text-${color}-600`} />
+              <div>
+                <div className="text-xl font-semibold">
+                  {value}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {title}
+                </div>
               </div>
-              <span className="text-xs text-muted-foreground">Il y a 2 heures</span>
             </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">Nouveau joueur inscrit</p>
-                <p className="text-xs text-muted-foreground">Jean Dupont</p>
+            {trend && (
+              <div className={`flex items-center text-xs ${
+                trend > 0 ? 'text-green-600' : 'text-red-600'
+              }`}>
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {Math.abs(trend)}%
               </div>
-              <span className="text-xs text-muted-foreground">Il y a 5 heures</span>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">Match terminé</p>
-                <p className="text-xs text-muted-foreground">Équipe A vs Équipe B (13-6)</p>
-              </div>
-              <span className="text-xs text-muted-foreground">Hier</span>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
-    </>
-  )
-}
+    </motion.div>
+  );
+};
+
+const Dashboard: React.FC = () => {
+  const { data: tournaments = [], isLoading: tournamentsLoading } = useTournaments();
+  const { data: teams = [], isLoading: teamsLoading } = useTeams();
+
+  const activeTournaments = tournaments.filter(t => t.status === 'ONGOING');
+  const upcomingTournaments = tournaments.filter(t => t.status === 'UPCOMING');
+
+  const stats = [
+    {
+      title: 'Actifs',
+      value: activeTournaments.length,
+      icon: Activity,
+      description: 'Tournois en cours',
+      color: 'green'
+    },
+    {
+      title: 'Total',
+      value: tournaments.length,
+      icon: Trophy,
+      description: 'Tous les tournois',
+      color: 'blue'
+    },
+    {
+      title: 'Équipes',
+      value: teams.length,
+      icon: Users,
+      description: 'Inscrites',
+      color: 'purple'
+    },
+    {
+      title: 'À venir',
+      value: upcomingTournaments.length,
+      icon: Calendar,
+      description: 'Programmés',
+      color: 'orange'
+    }
+  ];
+
+  const isLoading = tournamentsLoading || teamsLoading;
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Tableau de bord</h1>
+          <p className="text-muted-foreground">Gérez vos tournois de pétanque</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Link href="/teams">
+            <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto">
+              <Users className="h-4 w-4" />
+              Équipes
+            </Button>
+          </Link>
+          <Link href="/tournaments">
+            <Button size="sm" className="gap-2 w-full sm:w-auto">
+              <Plus className="h-4 w-4" />
+              Nouveau tournoi
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Statistiques */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, index) => (
+          <motion.div
+            key={stat.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.05 }}
+          >
+            <StatsCard {...stat} />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Actions rapides */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Actions rapides</CardTitle>
+          <CardDescription>
+            Accédez rapidement aux fonctionnalités principales
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Link href="/tournaments">
+              <Button variant="outline" className="w-full gap-2">
+                <Trophy className="h-4 w-4" />
+                Créer un tournoi
+              </Button>
+            </Link>
+            <Link href="/teams">
+              <Button variant="outline" className="w-full gap-2">
+                <Users className="h-4 w-4" />
+                Gérer les équipes
+              </Button>
+            </Link>
+            <Link href="/matches">
+              <Button variant="outline" className="w-full gap-2">
+                <Calendar className="h-4 w-4" />
+                Voir les matchs
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const session = await getSession(context)
-
+  const session = await getSession(context);
+  
   if (!session) {
     return {
       redirect: {
         destination: '/auth',
         permanent: false,
       },
-    }
+    };
   }
+
+  const queryClient = new QueryClient();
 
   return {
     props: {
-      session,
+      dehydratedState: dehydrate(queryClient),
     },
-  }
-}
+  };
+};
+
+export default Dashboard;

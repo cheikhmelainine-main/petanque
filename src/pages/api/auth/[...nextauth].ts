@@ -3,11 +3,11 @@ import GoogleProvider from 'next-auth/providers/google'
 import GitHubProvider from 'next-auth/providers/github'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { MongoDBAdapter } from '@next-auth/mongodb-adapter'
-import clientPromise from '../../../lib/mongodb'
+import { clientPromise } from '../../../lib/mongodb'
 import connectDB from '../../../lib/mongoose'
 import User from '../../../models/User'
 
-export default NextAuth({
+export const authOptions = {
   adapter: MongoDBAdapter(clientPromise),
   providers: [
     CredentialsProvider({
@@ -56,17 +56,24 @@ export default NextAuth({
     }),
   ],
   session: {
-    strategy: 'jwt', // Changé en JWT pour supporter les credentials
+    strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 jours
     updateAge: 24 * 60 * 60, // 24 heures
   },
   callbacks: {
-    async session({ session, user }) {
-      // Ajouter l'ID utilisateur à la session
-      if (session?.user && user) {
-        session.user.id = user.id
+    async session({ session, token }) {
+      // Ajouter l'ID utilisateur à la session depuis le token
+      if (session?.user && token?.sub) {
+        (session.user as any).id = token.sub
       }
       return session
+    },
+    async jwt({ token, user }) {
+      // Persister l'ID utilisateur dans le token
+      if (user) {
+        token.sub = user.id
+      }
+      return token
     },
     async signIn() {
       // Vous pouvez ajouter une logique personnalisée ici
@@ -78,4 +85,6 @@ export default NextAuth({
     error: '/auth/error',
   },
   debug: process.env.NODE_ENV === 'development',
-})
+}
+
+export default NextAuth(authOptions as any)

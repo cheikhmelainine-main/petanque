@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { MongoClient, MongoClientOptions } from 'mongodb';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -42,4 +43,24 @@ async function connectDB() {
   return cached.conn;
 }
 
-export default connectDB; 
+// Configuration séparée pour Next-Auth MongoDB Adapter
+let clientCached = (global as any).mongoClient;
+
+if (!clientCached) {
+  clientCached = (global as any).mongoClient = { conn: null, promise: null };
+}
+
+const options: MongoClientOptions = {
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+};
+
+if (!clientCached.promise) {
+  clientCached.promise = MongoClient.connect(MONGODB_URI!, options);
+}
+
+const clientPromise = clientCached.promise;
+
+export default connectDB;
+export { clientPromise }; 

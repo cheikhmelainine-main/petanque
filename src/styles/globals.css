@@ -71,3 +71,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Styles pour une meilleure expérience utilisateur */
+.container {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+/* Styles pour les animations fluides */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    scroll-behavior: smooth;
+  }
+}
