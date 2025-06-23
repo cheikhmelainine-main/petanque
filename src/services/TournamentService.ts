@@ -588,7 +588,7 @@ export class TournamentService {
     return true;
   }
 
-  // Générer le bracket des équipes qualifiées
+  // Générer le bracket des équipes qualifiées avec rounds adaptatifs
   private static async generateQualifiedTeamsBracket(tournamentId: string, qualifiedTeams: ITeam[]): Promise<IMatch[]> {
     console.log(`🏆 Génération du bracket des équipes qualifiées avec ${qualifiedTeams.length} équipes`);
     
@@ -646,7 +646,7 @@ export class TournamentService {
     return matches;
   }
 
-  // Générer le bracket des équipes éliminées
+  // Générer le bracket des équipes éliminées avec rounds adaptatifs
   private static async generateEliminatedTeamsBracket(tournamentId: string, eliminatedTeams: ITeam[]): Promise<IMatch[]> {
     console.log(`🥉 Génération du bracket des équipes éliminées avec ${eliminatedTeams.length} équipes`);
     
@@ -1057,18 +1057,18 @@ export class TournamentService {
       }).lean();
 
       // Calculer les statistiques pour chaque équipe
-      const teamsWithStats = groupTeams.map((team: Record<string, any>) => {
+      const teamsWithStats = groupTeams.map((team: any) => {
         const teamId = (team._id as mongoose.Types.ObjectId).toString();
-        const teamMatches = groupMatches.filter((match: Record<string, any>) => 
+        const teamMatches = groupMatches.filter((match: any) => 
           (match.team1Id as mongoose.Types.ObjectId).toString() === teamId || 
           (match.team2Id as mongoose.Types.ObjectId)?.toString() === teamId
         );
 
-        const wins = teamMatches.filter((match: Record<string, any>) => 
+        const wins = teamMatches.filter((match: any) => 
           match.winnerTeamId && (match.winnerTeamId as mongoose.Types.ObjectId).toString() === teamId
         ).length;
 
-        const losses = teamMatches.filter((match: Record<string, any>) => 
+        const losses = teamMatches.filter((match: any) => 
           match.winnerTeamId && (match.winnerTeamId as mongoose.Types.ObjectId).toString() !== teamId
         ).length;
 
@@ -1078,7 +1078,7 @@ export class TournamentService {
         let pointsFor = 0;
         let pointsAgainst = 0;
 
-        teamMatches.forEach((match: Record<string, any>) => {
+        teamMatches.forEach((match: any) => {
           if ((match.team1Id as mongoose.Types.ObjectId).toString() === teamId) {
             pointsFor += (match.team1Score as number) || 0;
             pointsAgainst += (match.team2Score as number) || 0;
@@ -1373,8 +1373,8 @@ export class TournamentService {
   private static async generateNextEliminationRound(tournamentId: string, completedMatch: IMatch): Promise<void> {
     const currentRound = completedMatch.round;
     const nextRound = currentRound + 1;
-    const bracketType = (completedMatch.metadata as Record<string, any>)?.bracketType || 'general';
-    const bracketName = (completedMatch.metadata as Record<string, any>)?.bracketName || '';
+    const bracketType = (completedMatch.metadata as any)?.bracketType || 'general';
+    const bracketName = (completedMatch.metadata as any)?.bracketName || '';
     
     // Vérifier si tous les matchs du round actuel du même bracket sont terminés
     const currentRoundMatches = await Match.find({
@@ -1495,9 +1495,9 @@ export class TournamentService {
   // Obtenir le nom du round pour le bracket des qualifiés
   private static getQualifiedTeamsRoundName(totalTeams: number, currentRound: number): string {
     const roundNames: Record<number, string> = {
-      1: 'Qualification',
-      2: 'Demi-finale Qualifiés/Eliminés',
-      3: 'Finale Qualifiés/Eliminés'
+      1: 'Demi-finale des Qualifiés',
+      2: 'Finale des Qualifiés',
+      3: 'Finale des Qualifiés'
     };
     
     return roundNames[currentRound] || `Round ${currentRound} - Qualifiés`;
@@ -1665,6 +1665,82 @@ export class TournamentService {
     };
   }
 
+  // Générer le bracket des équipes qualifiées
+  private static async generateQualifiedTeamsBracket(tournamentId: string, qualifiedTeams: ITeam[]): Promise<IMatch[]> {
+    console.log(`🏆 Génération du bracket des équipes qualifiées avec ${qualifiedTeams.length} équipes`);
+    
+    // Mélanger les équipes avec contrainte de groupes
+    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(qualifiedTeams);
+    
+    const matches: IMatch[] = [];
+    const currentRound = 1;
+
+    // Créer les matchs de demi-finale des qualifiés
+    for (let i = 0; i < shuffledTeams.length; i += 2) {
+      if (i + 1 < shuffledTeams.length) {
+        const match = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round: currentRound,
+          roundType: RoundType.KNOCKOUT,
+          team1Id: shuffledTeams[i]._id,
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: false,
+          metadata: {
+            eliminationRound: 'Demi-finale des Qualifiés',
+            team1OriginalGroup: shuffledTeams[i].originalGroup,
+            team2OriginalGroup: shuffledTeams[i + 1].originalGroup,
+            bracketType: 'winners',
+            bracketName: 'Qualifiés'
+          }
+        });
+
+        await match.save();
+        matches.push(match);
+        console.log(`✅ Match qualifiés créé : ${shuffledTeams[i].name} vs ${shuffledTeams[i + 1].name}`);
+      }
+    }
+
+    return matches;
+  }
+
+  // Générer le bracket des équipes éliminées
+  private static async generateEliminatedTeamsBracket(tournamentId: string, eliminatedTeams: ITeam[]): Promise<IMatch[]> {
+    console.log(`🥉 Génération du bracket des équipes éliminées avec ${eliminatedTeams.length} équipes`);
+    
+    // Mélanger les équipes avec contrainte de groupes
+    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(eliminatedTeams);
+    
+    const matches: IMatch[] = [];
+    const currentRound = 1;
+
+    // Créer les matchs de demi-finale des éliminés
+    for (let i = 0; i < shuffledTeams.length; i += 2) {
+      if (i + 1 < shuffledTeams.length) {
+        const match = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round: currentRound,
+          roundType: RoundType.KNOCKOUT,
+          team1Id: shuffledTeams[i]._id,
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: false,
+          metadata: {
+            eliminationRound: 'Demi-finale des Éliminés',
+            team1OriginalGroup: shuffledTeams[i].originalGroup,
+            team2OriginalGroup: shuffledTeams[i + 1].originalGroup,
+            bracketType: 'losers',
+            bracketName: 'Éliminés'
+          }
+        });
+
+        await match.save();
+        matches.push(match);
+        console.log(`✅ Match éliminés créé : ${shuffledTeams[i].name} vs ${shuffledTeams[i + 1].name}`);
+      }
+    }
+
+    return matches;
+  }
+
   // Générer le bracket des gagnants (méthode restaurée pour compatibilité)
   private static async generateWinnersBracket(tournamentId: string, teams: mongoose.Types.ObjectId[], round: number): Promise<void> {
     if (teams.length < 2) return;
@@ -1705,265 +1781,5 @@ export class TournamentService {
     };
     
     return roundNames[currentRound] || `Round ${currentRound} - Gagnants`;
-  }
-
-  // NOUVELLE MÉTHODE : Vérifier si les demi-finales des qualifiés peuvent être lancées
-  static async canStartSemiFinals(tournamentId: string): Promise<{ canStart: boolean, qualifiedTeams: ITeam[], message?: string }> {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      throw new Error('Tournoi non trouvé');
-    }
-
-    // Vérifier que toutes les phases d'élimination directe sont terminées
-    const eliminationMatches = await Match.find({
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-      roundType: RoundType.KNOCKOUT,
-      status: { $ne: MatchStatus.COMPLETED }
-    });
-
-    if (eliminationMatches.length > 0) {
-      return {
-        canStart: false,
-        qualifiedTeams: [],
-        message: 'Tous les matchs d\'élimination directe doivent être terminés'
-      };
-    }
-
-    // Récupérer les GAGNANTS des matchs d'élimination directe (pas toutes les équipes qualifiées)
-    const completedEliminationMatches = await Match.find({
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-      roundType: RoundType.KNOCKOUT,
-      status: MatchStatus.COMPLETED
-    }).populate(['team1Id', 'team2Id', 'winnerTeamId']);
-
-    if (completedEliminationMatches.length === 0) {
-      return {
-        canStart: false,
-        qualifiedTeams: [],
-        message: 'Aucun match d\'élimination directe terminé'
-      };
-    }
-
-    // Extraire les IDs des équipes gagnantes
-    const winnerIds = completedEliminationMatches
-      .filter(match => match.winnerTeamId)
-      .map(match => match.winnerTeamId);
-
-    if (winnerIds.length < 4) {
-      return {
-        canStart: false,
-        qualifiedTeams: [],
-        message: `Pas assez d'équipes gagnantes (${winnerIds.length}/4 minimum)`
-      };
-    }
-
-    // Récupérer les équipes gagnantes
-    const qualifiedTeams = await Team.find({
-      _id: { $in: winnerIds }
-    });
-
-    console.log(`🏆 ${qualifiedTeams.length} équipes gagnantes de la phase d'élimination directe`);
-
-    return {
-      canStart: true,
-      qualifiedTeams
-    };
-  }
-
-  // NOUVELLE MÉTHODE : Générer les demi-finales des qualifiés
-  static async generateSemiFinals(tournamentId: string): Promise<{ semiFinalMatches: IMatch[], qualifiedTeams: ITeam[] }> {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      throw new Error('Tournoi non trouvé');
-    }
-
-    // Vérifier que les demi-finales peuvent être lancées
-    const canStart = await this.canStartSemiFinals(tournamentId);
-    if (!canStart.canStart) {
-      throw new Error(canStart.message || 'Impossible de lancer les demi-finales');
-    }
-
-    // Récupérer les équipes gagnantes de la phase d'élimination directe
-    const qualifiedTeams = canStart.qualifiedTeams;
-
-    console.log(`🏆 Génération des demi-finales avec ${qualifiedTeams.length} équipes gagnantes de la phase d'élimination`);
-
-    // Mélanger les équipes avec contrainte de groupes
-    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(qualifiedTeams);
-
-    const semiFinalMatches: IMatch[] = [];
-
-    // Créer les matchs de demi-finale
-    for (let i = 0; i < shuffledTeams.length; i += 2) {
-      if (i + 1 < shuffledTeams.length) {
-        const match = new Match({
-          tournamentId: new mongoose.Types.ObjectId(tournamentId),
-          round: 1,
-          roundType: RoundType.FINAL,
-          team1Id: shuffledTeams[i]._id,
-          team2Id: shuffledTeams[i + 1]._id,
-          isTimedMatch: false,
-          metadata: {
-            eliminationRound: 'Demi-finale des Qualifiés',
-            team1OriginalGroup: shuffledTeams[i].originalGroup,
-            team2OriginalGroup: shuffledTeams[i + 1].originalGroup,
-            bracketType: 'semi_finals',
-            bracketName: 'Demi-finale des Qualifiés',
-            finalType: 'semi_finals'
-          }
-        });
-
-        await match.save();
-        semiFinalMatches.push(match);
-        console.log(`✅ Demi-finale créée : ${shuffledTeams[i].name} vs ${shuffledTeams[i + 1].name}`);
-      }
-    }
-
-    console.log(`🎯 ${semiFinalMatches.length} matchs de demi-finale créés`);
-
-    return {
-      semiFinalMatches,
-      qualifiedTeams
-    };
-  }
-
-  // NOUVELLE MÉTHODE : Vérifier si les deux finales peuvent être lancées
-  static async canStartTwoFinals(tournamentId: string): Promise<{ canStart: boolean, winnersTeams: ITeam[], losersTeams: ITeam[], message?: string }> {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      throw new Error('Tournoi non trouvé');
-    }
-
-    // Vérifier que toutes les demi-finales sont terminées
-    const semiFinalMatches = await Match.find({
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-      roundType: RoundType.FINAL,
-      'metadata.bracketType': 'semi_finals',
-      status: { $ne: MatchStatus.COMPLETED }
-    });
-
-    if (semiFinalMatches.length > 0) {
-      return {
-        canStart: false,
-        winnersTeams: [],
-        losersTeams: [],
-        message: 'Toutes les demi-finales doivent être terminées'
-      };
-    }
-
-    // Récupérer les GAGNANTS des demi-finales
-    const completedSemiFinals = await Match.find({
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-      roundType: RoundType.FINAL,
-      'metadata.bracketType': 'semi_finals',
-      status: MatchStatus.COMPLETED
-    }).populate(['team1Id', 'team2Id', 'winnerTeamId']);
-
-    if (completedSemiFinals.length < 2) {
-      return {
-        canStart: false,
-        winnersTeams: [],
-        losersTeams: [],
-        message: 'Au moins 2 demi-finales doivent être terminées'
-      };
-    }
-
-    // Identifier les gagnants et perdants des demi-finales
-    const winnersIds: mongoose.Types.ObjectId[] = [];
-    const losersIds: mongoose.Types.ObjectId[] = [];
-
-    completedSemiFinals.forEach(match => {
-      if (match.winnerTeamId) {
-        winnersIds.push(match.winnerTeamId);
-        // L'autre équipe est le perdant
-        const loserTeamId = match.winnerTeamId.equals(match.team1Id._id) ? match.team2Id._id : match.team1Id._id;
-        losersIds.push(loserTeamId);
-      }
-    });
-
-    // Récupérer les équipes
-    const winnersTeams = await Team.find({ _id: { $in: winnersIds } });
-    const losersTeams = await Team.find({ _id: { $in: losersIds } });
-
-    if (winnersTeams.length < 2 || losersTeams.length < 2) {
-      return {
-        canStart: false,
-        winnersTeams,
-        losersTeams,
-        message: 'Il faut au moins 2 gagnants et 2 perdants pour créer les finales'
-      };
-    }
-
-    console.log(`🏆 ${winnersTeams.length} gagnants des demi-finales pour la finale des gagnants`);
-    console.log(`🥉 ${losersTeams.length} perdants des demi-finales pour la finale des perdants`);
-
-    return {
-      canStart: true,
-      winnersTeams,
-      losersTeams
-    };
-  }
-
-  // NOUVELLE MÉTHODE : Générer les deux finales séparées
-  static async generateTwoFinals(tournamentId: string): Promise<{ winnersFinal: IMatch, losersFinal: IMatch }> {
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      throw new Error('Tournoi non trouvé');
-    }
-
-    // Vérifier que les finales peuvent être lancées
-    const canStart = await this.canStartTwoFinals(tournamentId);
-    if (!canStart.canStart) {
-      throw new Error(canStart.message || 'Impossible de lancer les finales');
-    }
-
-    const { winnersTeams, losersTeams } = canStart;
-
-    // Créer la finale des gagnants
-    const winnersFinal = new Match({
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-      round: 2,
-      roundType: RoundType.FINAL,
-      team1Id: winnersTeams[0]._id,
-      team2Id: winnersTeams[1]._id,
-      isTimedMatch: false,
-      metadata: {
-        eliminationRound: 'Finale des Gagnants',
-        team1OriginalGroup: winnersTeams[0].originalGroup,
-        team2OriginalGroup: winnersTeams[1].originalGroup,
-        bracketType: 'winners_final',
-        bracketName: 'Finale des Gagnants',
-        finalType: 'winners'
-      }
-    });
-
-    await winnersFinal.save();
-    console.log(`🏆 Finale des gagnants créée : ${winnersTeams[0].name} vs ${winnersTeams[1].name}`);
-
-    // Créer la finale des perdants
-    const losersFinal = new Match({
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-      round: 2,
-      roundType: RoundType.FINAL,
-      team1Id: losersTeams[0]._id,
-      team2Id: losersTeams[1]._id,
-      isTimedMatch: false,
-      metadata: {
-        eliminationRound: 'Finale des Perdants',
-        team1OriginalGroup: losersTeams[0].originalGroup,
-        team2OriginalGroup: losersTeams[1].originalGroup,
-        bracketType: 'losers_final',
-        bracketName: 'Finale des Perdants',
-        finalType: 'losers'
-      }
-    });
-
-    await losersFinal.save();
-    console.log(`🥉 Finale des perdants créée : ${losersTeams[0].name} vs ${losersTeams[1].name}`);
-
-    return {
-      winnersFinal,
-      losersFinal
-    };
   }
 } 

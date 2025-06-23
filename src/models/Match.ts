@@ -42,14 +42,9 @@ export interface IMatch extends Document {
     eliminationRound?: string;  // Nom du round d'élimination (64e, 32e, etc.)
     team1OriginalGroup?: number;  // Groupe d'origine de l'équipe 1
     team2OriginalGroup?: number;  // Groupe d'origine de l'équipe 2
-    finalType?: 'winners' | 'losers' | 'semi_finals';  // Type de finale de groupe
-    bracketType?: string;  // Type de bracket (winners, losers, semi_finals, etc.)
-    bracketName?: string;  // Nom du bracket
+    finalType?: 'winners' | 'losers';  // Type de finale de groupe
     groupNumber?: number;  // Numéro du groupe
     description?: string;  // Description de la finale
-    roundNumber?: number;  // Numéro du round
-    totalRounds?: number;  // Nombre total de rounds
-    previousRound?: number;  // Round précédent
   };
   createdAt: Date;
 }
@@ -137,28 +132,13 @@ const matchSchema = new Schema<IMatch>({
     },
     finalType: {
       type: String,
-      enum: ['winners', 'losers', 'semi_finals']
-    },
-    bracketType: {
-      type: String
-    },
-    bracketName: {
-      type: String
+      enum: ['winners', 'losers']
     },
     groupNumber: {
       type: Number
     },
     description: {
       type: String
-    },
-    roundNumber: {
-      type: Number
-    },
-    totalRounds: {
-      type: Number
-    },
-    previousRound: {
-      type: Number
     }
   },
   createdAt: {
