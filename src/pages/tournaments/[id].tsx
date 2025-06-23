@@ -24,6 +24,8 @@ import { TournamentRanking } from '../../components/tournaments/TournamentRankin
 import { GroupMatchesList } from '../../components/matches/GroupMatchesList';
 import SeparateQualificationManager from '../../components/tournaments/SeparateQualificationManager';
 import EliminationBracket from '../../components/tournaments/EliminationBracket';
+import SemiFinalsButton from '../../components/tournaments/SemiFinalsButton';
+import TwoFinalsButton from '../../components/tournaments/TwoFinalsButton';
 
 import { 
   useTournament, 
@@ -137,6 +139,12 @@ const TournamentDetail: React.FC = () => {
 
   const allGroupsCompleted = checkAllGroupsCompleted();
   const hasEliminationMatches = matches.some(m => m.roundType === 'KNOCKOUT' || m.roundType === 'WINNERS' || m.roundType === 'LOSERS');
+  
+  // NOUVELLES VÉRIFICATIONS POUR LES NOUVELLES FONCTIONNALITÉS
+  const hasSemiFinals = matches.some(m => m.roundType === 'FINAL' && m.metadata?.bracketType === 'semi_finals');
+  const hasTwoFinals = matches.some(m => m.roundType === 'FINAL' && (m.metadata?.bracketType === 'winners_final' || m.metadata?.bracketType === 'losers_final'));
+  const allEliminationCompleted = matches.filter(m => m.roundType === 'KNOCKOUT').every(m => m.status === MatchStatus.COMPLETED);
+  const allSemiFinalsCompleted = matches.filter(m => m.roundType === 'FINAL' && m.metadata?.bracketType === 'semi_finals').every(m => m.status === MatchStatus.COMPLETED);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('fr-FR', {
@@ -421,6 +429,36 @@ const TournamentDetail: React.FC = () => {
               }}
             />
           )}
+
+          {/* NOUVEAU : Bouton pour les demi-finales des qualifiés */}
+          {tournament.type === 'GROUP' && 
+           tournament.status === TournamentStatus.ONGOING && 
+           hasEliminationMatches && 
+           allEliminationCompleted && 
+           !hasSemiFinals && (
+            <SemiFinalsButton 
+              tournamentId={id}
+              onSemiFinalsGenerated={() => {
+                // Recharger les données après génération des demi-finales
+                window.location.reload();
+              }}
+            />
+          )}
+
+          {/* NOUVEAU : Bouton pour les deux finales */}
+          {tournament.type === 'GROUP' && 
+           tournament.status === TournamentStatus.ONGOING && 
+           hasSemiFinals && 
+           allSemiFinalsCompleted && 
+           !hasTwoFinals && (
+            <TwoFinalsButton 
+              tournamentId={id}
+              onFinalsGenerated={() => {
+                // Recharger les données après génération des finales
+                window.location.reload();
+              }}
+            />
+          )}
         </TabsContent>
         
         <TabsContent value="teams" className="space-y-6">
@@ -434,40 +472,91 @@ const TournamentDetail: React.FC = () => {
             <CardContent>
               {teams.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {teams.map((team) => (
-                    <motion.div
-                      key={team._id}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="p-4 border rounded-lg hover:shadow-md transition-all"
-                    >
-                      <h4 className="font-medium text-gray-900 dark:text-white">
-                        {team.name}
-                      </h4>
-                      <div className="text-sm text-gray-500 mt-1">
-                        {team.members && team.members.length > 0 ? (
-                          <div className="space-y-1">
-                            {team.members.map((member, index) => (
-                              <div key={index} className="flex items-center">
-                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                                {member.name}
-                              </div>
-                            ))}
+                  {teams.map((team) => {
+                    // Déterminer la bordure selon le statut de qualification
+                    const getTeamBorder = () => {
+                      if (team.isQualified) {
+                        return 'border-l-4 border-green-500'; // Équipe qualifiée
+                      } else if (team.isQualified === false) {
+                        return 'border-l-4 border-red-500'; // Équipe éliminée
+                      } else {
+                        return 'border-l-4 border-gray-500'; // Statut indéterminé
+                      }
+                    };
+
+                    // Déterminer la couleur du badge selon le statut
+                    const getBadgeColor = () => {
+                      if (team.isQualified) {
+                        return 'bg-green-100 text-green-800'; // Équipe qualifiée
+                      } else if (team.isQualified === false) {
+                        return 'bg-red-100 text-red-800'; // Équipe éliminée
+                      } else {
+                        return 'bg-gray-100 text-gray-800'; // Statut indéterminé
+                      }
+                    };
+
+                    // Obtenir le texte du badge
+                    const getBadgeText = () => {
+                      if (team.qualificationRank) {
+                        return team.qualificationRank === 1 ? '1er' : '2e';
+                      }
+                      if (team.isQualified) {
+                        return 'Qualifiée';
+                      } else if (team.isQualified === false) {
+                        return 'Éliminée';
+                      }
+                      return '';
+                    };
+
+                    return (
+                      <motion.div
+                        key={team._id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className={`p-4 border rounded-lg hover:shadow-md transition-all ${getTeamBorder()}`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-900 dark:text-white">
+                            {team.name}
+                          </h4>
+                          {getBadgeText() && (
+                            <Badge className={`text-xs ${getBadgeColor()}`}>
+                              {getBadgeText()}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-1">
+                          {team.members && team.members.length > 0 ? (
+                            <div className="space-y-1">
+                              {team.members.map((member, index) => (
+                                <div key={index} className="flex items-center">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                  {member.name}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span>Aucun membre</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-3 text-xs">
+                          <span className="text-gray-500">
+                            {team.stats?.gamesPlayed || 0} matchs
+                          </span>
+                          <span className="font-medium">
+                            {team.points || team.stats?.points || 0} pts
+                          </span>
+                        </div>
+                        {team.originalGroup && (
+                          <div className="mt-2">
+                            <Badge variant="outline" className="text-xs">
+                              Groupe {team.originalGroup}
+                            </Badge>
                           </div>
-                        ) : (
-                          <span>Aucun membre</span>
                         )}
-                      </div>
-                      <div className="flex items-center justify-between mt-3 text-xs">
-                        <span className="text-gray-500">
-                          {team.stats?.gamesPlayed || 0} matchs
-                        </span>
-                        <span className="font-medium">
-                          {team.points || team.stats?.points || 0} pts
-                        </span>
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -563,8 +652,20 @@ const TournamentDetail: React.FC = () => {
       {hasEliminationMatches && (
         <EliminationBracket 
           tournamentId={id}
-          matches={matches.filter(m => m.roundType === 'KNOCKOUT') as any}
-          teams={teams as any}
+          matches={matches.filter(m => m.roundType === 'KNOCKOUT').map(match => ({
+            ...match,
+            team1Id: match.team1Id._id,
+            team2Id: match.team2Id?._id || '',
+            winnerTeamId: match.winnerTeamId,
+            metadata: match.metadata ? {
+              eliminationRound: match.metadata.eliminationRound,
+              team1OriginalGroup: match.metadata.team1OriginalGroup,
+              team2OriginalGroup: match.metadata.team2OriginalGroup,
+              bracketType: match.metadata.bracketType as 'semi_finals' | 'winners_final' | 'losers_final' | 'winners' | 'losers',
+              bracketName: match.metadata.bracketName
+            } : undefined
+          }))}
+          teams={teams}
         />
       )}
 

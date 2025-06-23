@@ -51,6 +51,7 @@ export interface Tournament {
   endDate?: string;
   createdAt: string;
   createdById: string;
+  description?: string;
   
   // Configuration pour les tournois GROUP
   groupSize?: number;
@@ -82,8 +83,12 @@ export interface Team {
   };
   groupId?: string;
   groupNumber?: number;
+  originalGroup?: number;
   eliminated?: boolean;
   ranking?: number;
+  isQualified?: boolean;
+  qualificationRank?: number;
+  qualificationType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -108,6 +113,18 @@ export interface Match {
   timerStartedAt?: string;
   finishedBeforeTimeLimit?: boolean;
   isTimedMatch?: boolean;
+  metadata?: {
+    finalType?: 'winners' | 'losers';
+    description?: string;
+    bracketType?: string;
+    bracketName?: string;
+    eliminationRound?: string;
+    team1OriginalGroup?: number;
+    team2OriginalGroup?: number;
+    roundNumber?: number;
+    totalRounds?: number;
+    previousRound?: number;
+  };
   createdAt: string;
 }
 

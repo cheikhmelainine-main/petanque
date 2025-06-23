@@ -401,4 +401,104 @@ export const useQualificationPhase = () => {
       toast.error(error instanceof Error ? error.message : 'Erreur lors du lancement des qualifications');
     },
   });
+};
+
+// Hook pour lancer les demi-finales des qualifiés
+export const useSemiFinals = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const response = await fetch(`/api/tournament/${tournamentId}/semi-finals`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors du lancement des demi-finales');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success(`🏆 Demi-finales lancées ! ${data.data.semiFinalMatchesCount} matchs créés`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors du lancement des demi-finales');
+    },
+  });
+};
+
+// Hook pour vérifier si les demi-finales peuvent être lancées
+export const useCanStartSemiFinals = (tournamentId: string) => {
+  return useQuery({
+    queryKey: ['semi-finals-check', tournamentId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tournament/${tournamentId}/semi-finals`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors de la vérification');
+      }
+      
+      return response.json();
+    },
+    enabled: !!tournamentId,
+  });
+};
+
+// Hook pour lancer les deux finales
+export const useTwoFinals = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const response = await fetch(`/api/tournament/${tournamentId}/two-finals`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors du lancement des finales');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success(`🏆 Deux finales lancées ! Finale des gagnants et finale des perdants créées`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Erreur lors du lancement des finales');
+    },
+  });
+};
+
+// Hook pour vérifier si les deux finales peuvent être lancées
+export const useCanStartTwoFinals = (tournamentId: string) => {
+  return useQuery({
+    queryKey: ['two-finals-check', tournamentId],
+    queryFn: async () => {
+      const response = await fetch(`/api/tournament/${tournamentId}/two-finals`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erreur lors de la vérification');
+      }
+      
+      return response.json();
+    },
+    enabled: !!tournamentId,
+  });
 }; 
