@@ -6,12 +6,12 @@ import { Trophy, Users, Target, Crown, Medal } from 'lucide-react';
 interface EliminationMatch {
   _id: string;
   round: number;
-  team1Id: string;
-  team2Id: string;
+  team1Id: string | { _id: string; name: string };
+  team2Id: string | { _id: string; name: string };
   team1Score?: number;
   team2Score?: number;
   status: string;
-  winnerTeamId?: string;
+  winnerTeamId?: string | { _id: string; name: string };
   eliminationRound?: string;
   metadata?: {
     eliminationRound?: string;
@@ -63,17 +63,24 @@ export default function EliminationBracket({ matches, teams = [], tournamentId }
       .sort((a, b) => a - b);
   };
 
+  // Fonction pour obtenir l'ID d'une équipe (gère les deux formats)
+  const getTeamId = (teamId: string | { _id: string; name: string }): string => {
+    return typeof teamId === 'string' ? teamId : teamId._id;
+  };
+
   // Fonction pour obtenir le nom d'une équipe
-  const getTeamName = (teamId: string) => {
+  const getTeamName = (teamId: string | { _id: string; name: string }) => {
+    const id = getTeamId(teamId);
     if (!teams) return 'Équipe inconnue';
-    const team = teams.find(t => t._id === teamId);
+    const team = teams.find(t => t._id === id);
     return team?.name || 'Équipe inconnue';
   };
 
   // Fonction pour obtenir les informations d'une équipe
-  const getTeamInfo = (teamId: string) => {
+  const getTeamInfo = (teamId: string | { _id: string; name: string }) => {
+    const id = getTeamId(teamId);
     if (!teams) return undefined;
-    return teams.find(t => t._id === teamId);
+    return teams.find(t => t._id === id);
   };
 
   // Fonction pour obtenir le nom du round
@@ -325,4 +332,4 @@ export default function EliminationBracket({ matches, teams = [], tournamentId }
       </CardContent>
     </Card>
   );
-} 
+}

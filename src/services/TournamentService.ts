@@ -522,19 +522,13 @@ export class TournamentService {
 
     // Bracket des gagnants de finale - COMPLÈTEMENT SÉPARÉ
     if (winnersFinalTeams.length >= 4) {
-      const winnersBracket = await this.generateEliminationBracket(
-        tournamentId, 
-        winnersFinalTeams
-      );
+      const winnersBracket = await this.generateQualifiedTeamsBracket(tournamentId, winnersFinalTeams);
       eliminationMatches.push(...winnersBracket);
     }
 
     // Bracket des perdants de finale - COMPLÈTEMENT SÉPARÉ
     if (losersFinalTeams.length >= 4) {
-      const losersBracket = await this.generateEliminationBracket(
-        tournamentId, 
-        losersFinalTeams
-      );
+      const losersBracket = await this.generateEliminatedTeamsBracket(tournamentId, losersFinalTeams);
       eliminationMatches.push(...losersBracket);
     }
 
@@ -594,46 +588,170 @@ export class TournamentService {
     return true;
   }
 
-  // Générer le bracket d'élimination directe avec contrainte de groupes
-  private static async generateEliminationBracket(
-    tournamentId: string, 
-    qualifiedTeams: ITeam[]
-  ): Promise<IMatch[]> {
-    // Mélanger les équipes avec contrainte : éviter les équipes du même groupe jusqu'en finale
+  // Générer le bracket des équipes qualifiées avec rounds adaptatifs
+  private static async generateQualifiedTeamsBracket(tournamentId: string, qualifiedTeams: ITeam[]): Promise<IMatch[]> {
+    console.log(`🏆 Génération du bracket des équipes qualifiées avec ${qualifiedTeams.length} équipes`);
+    
+    // Mélanger les équipes avec contrainte de groupes
     const shuffledTeams = this.shuffleTeamsWithGroupConstraint(qualifiedTeams);
     
-    // Déterminer le nombre de tours d'élimination
-    const totalTeams = shuffledTeams.length;
-    const firstRoundSize = this.getFirstRoundSize(totalTeams);
+    // Déterminer les rounds nécessaires selon le nombre d'équipes
+    const roundsInfo = this.calculateRoundsForTeams(qualifiedTeams.length);
+    console.log(`📊 Rounds nécessaires pour ${qualifiedTeams.length} équipes qualifiées:`, roundsInfo);
     
-    console.log(`🏟️ Création du bracket d'élimination : ${totalTeams} équipes → ${firstRoundSize} matchs au premier tour`);
+    const matches: IMatch[] = [];
+    let currentTeams = [...shuffledTeams];
+    let currentRound = 1;
 
-    const eliminationMatches = [];
-    const currentRound = 1;
+    // Générer tous les rounds nécessaires
+    for (const roundInfo of roundsInfo) {
+      console.log(`🎯 Génération du round ${currentRound}: ${roundInfo.name} avec ${currentTeams.length} équipes`);
+      
+      const roundMatches: IMatch[] = [];
+      
+      // Créer les matchs du round actuel
+      for (let i = 0; i < currentTeams.length; i += 2) {
+        if (i + 1 < currentTeams.length) {
+          const match = new Match({
+            tournamentId: new mongoose.Types.ObjectId(tournamentId),
+            round: currentRound,
+            roundType: RoundType.KNOCKOUT,
+            team1Id: currentTeams[i]._id,
+            team2Id: currentTeams[i + 1]._id,
+            isTimedMatch: false,
+            metadata: {
+              eliminationRound: roundInfo.name,
+              team1OriginalGroup: currentTeams[i].originalGroup,
+              team2OriginalGroup: currentTeams[i + 1].originalGroup,
+              bracketType: 'winners',
+              bracketName: 'Qualifiés',
+              roundNumber: currentRound,
+              totalRounds: roundsInfo.length
+            }
+          });
 
-    // Créer les matchs du premier tour
-    for (let i = 0; i < shuffledTeams.length; i += 2) {
-      if (i + 1 < shuffledTeams.length) {
-        const match = new Match({
-          tournamentId: new mongoose.Types.ObjectId(tournamentId),
-          round: currentRound,
-          roundType: RoundType.KNOCKOUT,
-          team1Id: shuffledTeams[i]._id,
-          team2Id: shuffledTeams[i + 1]._id,
-          isTimedMatch: false,
-          metadata: {
-            eliminationRound: this.getEliminationRoundName(totalTeams, currentRound),
-            team1OriginalGroup: shuffledTeams[i].originalGroup,
-            team2OriginalGroup: shuffledTeams[i + 1].originalGroup
-          }
-        });
-
-        await match.save();
-        eliminationMatches.push(match);
+          await match.save();
+          roundMatches.push(match);
+          console.log(`✅ Match qualifiés créé (Round ${currentRound}): ${currentTeams[i].name} vs ${currentTeams[i + 1].name}`);
+        }
       }
+      
+      matches.push(...roundMatches);
+      currentRound++;
+      
+      // Pour le prochain round, on aura la moitié d'équipes (les gagnants)
+      currentTeams = currentTeams.slice(0, Math.floor(currentTeams.length / 2));
     }
 
-    return eliminationMatches;
+    return matches;
+  }
+
+  // Générer le bracket des équipes éliminées avec rounds adaptatifs
+  private static async generateEliminatedTeamsBracket(tournamentId: string, eliminatedTeams: ITeam[]): Promise<IMatch[]> {
+    console.log(`🥉 Génération du bracket des équipes éliminées avec ${eliminatedTeams.length} équipes`);
+    
+    // Mélanger les équipes avec contrainte de groupes
+    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(eliminatedTeams);
+    
+    // Déterminer les rounds nécessaires selon le nombre d'équipes
+    const roundsInfo = this.calculateRoundsForTeams(eliminatedTeams.length);
+    console.log(`📊 Rounds nécessaires pour ${eliminatedTeams.length} équipes éliminées:`, roundsInfo);
+    
+    const matches: IMatch[] = [];
+    let currentTeams = [...shuffledTeams];
+    let currentRound = 1;
+
+    // Générer tous les rounds nécessaires
+    for (const roundInfo of roundsInfo) {
+      console.log(`🎯 Génération du round ${currentRound}: ${roundInfo.name} avec ${currentTeams.length} équipes`);
+      
+      const roundMatches: IMatch[] = [];
+      
+      // Créer les matchs du round actuel
+      for (let i = 0; i < currentTeams.length; i += 2) {
+        if (i + 1 < currentTeams.length) {
+          const match = new Match({
+            tournamentId: new mongoose.Types.ObjectId(tournamentId),
+            round: currentRound,
+            roundType: RoundType.KNOCKOUT,
+            team1Id: currentTeams[i]._id,
+            team2Id: currentTeams[i + 1]._id,
+            isTimedMatch: false,
+            metadata: {
+              eliminationRound: roundInfo.name,
+              team1OriginalGroup: currentTeams[i].originalGroup,
+              team2OriginalGroup: currentTeams[i + 1].originalGroup,
+              bracketType: 'losers',
+              bracketName: 'Éliminés',
+              roundNumber: currentRound,
+              totalRounds: roundsInfo.length
+            }
+          });
+
+          await match.save();
+          roundMatches.push(match);
+          console.log(`✅ Match éliminés créé (Round ${currentRound}): ${currentTeams[i].name} vs ${currentTeams[i + 1].name}`);
+        }
+      }
+      
+      matches.push(...roundMatches);
+      currentRound++;
+      
+      // Pour le prochain round, on aura la moitié d'équipes (les gagnants)
+      currentTeams = currentTeams.slice(0, Math.floor(currentTeams.length / 2));
+    }
+
+    return matches;
+  }
+
+  // Calculer les rounds nécessaires selon le nombre d'équipes
+  private static calculateRoundsForTeams(teamCount: number): Array<{ name: string; matchCount: number }> {
+    const rounds: Array<{ name: string; matchCount: number }> = [];
+    let remainingTeams = teamCount;
+    let roundNumber = 1;
+
+    while (remainingTeams > 1) {
+      const matchCount = Math.floor(remainingTeams / 2);
+      let roundName = '';
+
+      // Déterminer le nom du round selon le nombre d'équipes initial
+      if (teamCount >= 32) {
+        if (roundNumber === 1) roundName = '32ème de finale';
+        else if (roundNumber === 2) roundName = '16ème de finale';
+        else if (roundNumber === 3) roundName = '8ème de finale';
+        else if (roundNumber === 4) roundName = 'Quart de finale';
+        else if (roundNumber === 5) roundName = 'Demi-finale';
+        else roundName = 'Finale';
+      } else if (teamCount >= 16) {
+        if (roundNumber === 1) roundName = '16ème de finale';
+        else if (roundNumber === 2) roundName = '8ème de finale';
+        else if (roundNumber === 3) roundName = 'Quart de finale';
+        else if (roundNumber === 4) roundName = 'Demi-finale';
+        else roundName = 'Finale';
+      } else if (teamCount >= 8) {
+        if (roundNumber === 1) roundName = '8ème de finale';
+        else if (roundNumber === 2) roundName = 'Quart de finale';
+        else if (roundNumber === 3) roundName = 'Demi-finale';
+        else roundName = 'Finale';
+      } else if (teamCount >= 4) {
+        if (roundNumber === 1) roundName = 'Quart de finale';
+        else if (roundNumber === 2) roundName = 'Demi-finale';
+        else roundName = 'Finale';
+      } else {
+        if (roundNumber === 1) roundName = 'Demi-finale';
+        else roundName = 'Finale';
+      }
+
+      rounds.push({
+        name: roundName,
+        matchCount: matchCount
+      });
+
+      remainingTeams = matchCount;
+      roundNumber++;
+    }
+
+    return rounds;
   }
 
   // Mélanger les équipes en évitant les confrontations du même groupe avant la finale
@@ -1255,12 +1373,15 @@ export class TournamentService {
   private static async generateNextEliminationRound(tournamentId: string, completedMatch: IMatch): Promise<void> {
     const currentRound = completedMatch.round;
     const nextRound = currentRound + 1;
+    const bracketType = (completedMatch.metadata as any)?.bracketType || 'general';
+    const bracketName = (completedMatch.metadata as any)?.bracketName || '';
     
-    // Vérifier si tous les matchs du round actuel sont terminés
+    // Vérifier si tous les matchs du round actuel du même bracket sont terminés
     const currentRoundMatches = await Match.find({
       tournamentId: new mongoose.Types.ObjectId(tournamentId),
       round: currentRound,
-      roundType: RoundType.KNOCKOUT
+      roundType: RoundType.KNOCKOUT,
+      'metadata.bracketType': bracketType
     });
 
     const completedMatches = currentRoundMatches.filter(m => m.status === MatchStatus.COMPLETED);
@@ -1274,54 +1395,49 @@ export class TournamentService {
     const existingNextRoundMatches = await Match.find({
       tournamentId: new mongoose.Types.ObjectId(tournamentId),
       round: nextRound,
-      roundType: RoundType.KNOCKOUT
+      roundType: RoundType.KNOCKOUT,
+      'metadata.bracketType': bracketType
     });
 
     if (existingNextRoundMatches.length > 0) {
       // Les matchs du round suivant existent déjà, ne pas les recréer
-      console.log(`⚠️ Les matchs du round ${nextRound} existent déjà, pas de duplication`);
+      console.log(`⚠️ Les matchs du round ${nextRound} pour le bracket ${bracketType} existent déjà, pas de duplication`);
       return;
     }
 
-    // Séparer les gagnants et les perdants
+    // Récupérer les gagnants du round actuel
     const winners: mongoose.Types.ObjectId[] = [];
-    const losers: mongoose.Types.ObjectId[] = [];
-
     completedMatches.forEach(match => {
       if (match.winnerTeamId) {
         winners.push(match.winnerTeamId);
-        // L'autre équipe est le perdant
-        const loserTeamId = match.winnerTeamId.equals(match.team1Id) ? match.team2Id : match.team1Id;
-        losers.push(loserTeamId);
       }
     });
 
-    console.log(`🏆 Round ${currentRound} terminé : ${winners.length} gagnants, ${losers.length} perdants`);
+    console.log(`🏆 Round ${currentRound} terminé pour le bracket ${bracketType} : ${winners.length} gagnants`);
 
     // Générer les matchs du round suivant selon le type de bracket
-    if (currentRound === 1) {
-      // Premier round : créer les brackets winners et losers
-      await this.generateWinnersBracket(tournamentId, winners, nextRound);
-      await this.generateLosersBracket(tournamentId, losers, nextRound);
-    } else {
-      // Rounds suivants : continuer dans les brackets respectifs
-      if (winners.length >= 2) {
+    if (winners.length >= 2) {
+      if (bracketType === 'winners' || bracketName === 'Qualifiés') {
+        // Bracket des qualifiés
+        await this.generateQualifiedTeamsNextRound(tournamentId, winners, nextRound);
+      } else if (bracketType === 'losers' || bracketName === 'Éliminés') {
+        // Bracket des éliminés
+        await this.generateEliminatedTeamsNextRound(tournamentId, winners, nextRound);
+      } else {
+        // Bracket général (ancien système)
         await this.generateWinnersBracket(tournamentId, winners, nextRound);
-      }
-      if (losers.length >= 2) {
-        await this.generateLosersBracket(tournamentId, losers, nextRound);
       }
     }
   }
 
-  // Générer le bracket des gagnants
-  private static async generateWinnersBracket(tournamentId: string, teams: mongoose.Types.ObjectId[], round: number): Promise<void> {
+  // Générer le prochain round pour le bracket des qualifiés
+  private static async generateQualifiedTeamsNextRound(tournamentId: string, teams: mongoose.Types.ObjectId[], round: number): Promise<void> {
     if (teams.length < 2) return;
 
-    const roundName = this.getWinnersRoundName(teams.length, round);
-    console.log(`🏆 Génération du bracket gagnants : ${roundName} avec ${teams.length} équipes`);
+    const roundName = this.getQualifiedTeamsRoundName(teams.length, round);
+    console.log(`🏆 Génération du bracket qualifiés : ${roundName} avec ${teams.length} équipes`);
 
-    // Créer les matchs du bracket gagnants
+    // Créer les matchs du bracket qualifiés
     for (let i = 0; i < teams.length; i += 2) {
       if (i + 1 < teams.length) {
         const match = new Match({
@@ -1334,24 +1450,25 @@ export class TournamentService {
           metadata: {
             eliminationRound: roundName,
             bracketType: 'winners',
+            bracketName: 'Qualifiés',
             previousRound: round - 1
           }
         });
 
         await match.save();
-        console.log(`✅ Match gagnants créé : ${teams[i]} vs ${teams[i + 1]} (Round ${round})`);
+        console.log(`✅ Match qualifiés créé : ${teams[i]} vs ${teams[i + 1]} (Round ${round})`);
       }
     }
   }
 
-  // Générer le bracket des perdants
-  private static async generateLosersBracket(tournamentId: string, teams: mongoose.Types.ObjectId[], round: number): Promise<void> {
+  // Générer le prochain round pour le bracket des éliminés
+  private static async generateEliminatedTeamsNextRound(tournamentId: string, teams: mongoose.Types.ObjectId[], round: number): Promise<void> {
     if (teams.length < 2) return;
 
-    const roundName = this.getLosersRoundName(teams.length, round);
-    console.log(`🏆 Génération du bracket perdants : ${roundName} avec ${teams.length} équipes`);
+    const roundName = this.getEliminatedTeamsRoundName(teams.length, round);
+    console.log(`🥉 Génération du bracket éliminés : ${roundName} avec ${teams.length} équipes`);
 
-    // Créer les matchs du bracket perdants
+    // Créer les matchs du bracket éliminés
     for (let i = 0; i < teams.length; i += 2) {
       if (i + 1 < teams.length) {
         const match = new Match({
@@ -1364,74 +1481,37 @@ export class TournamentService {
           metadata: {
             eliminationRound: roundName,
             bracketType: 'losers',
+            bracketName: 'Éliminés',
             previousRound: round - 1
           }
         });
 
         await match.save();
-        console.log(`✅ Match perdants créé : ${teams[i]} vs ${teams[i + 1]} (Round ${round})`);
+        console.log(`✅ Match éliminés créé : ${teams[i]} vs ${teams[i + 1]} (Round ${round})`);
       }
     }
   }
 
-  // Obtenir le nom du round pour le bracket gagnants
-  private static getWinnersRoundName(totalTeams: number, currentRound: number): string {
-    // Pour 16 équipes au total (8 gagnants + 8 perdants)
-    if (totalTeams === 8) {
-      const roundNames: Record<number, string> = {
-        1: '8ème de finale',
-        2: '4ème de finale', 
-        3: 'Demi-finale',
-        4: 'Finale Gagnants'
-      };
-      return roundNames[currentRound] || `Round ${currentRound} - Gagnants`;
-    }
-    
-    // Pour d'autres tailles
+  // Obtenir le nom du round pour le bracket des qualifiés
+  private static getQualifiedTeamsRoundName(totalTeams: number, currentRound: number): string {
     const roundNames: Record<number, string> = {
-      1: totalTeams >= 64 ? '64ème de finale' : 
-         totalTeams >= 32 ? '32ème de finale' :
-         totalTeams >= 16 ? '16ème de finale' :
-         totalTeams >= 8 ? '8ème de finale' : 'Quart de finale',
-      2: totalTeams >= 32 ? '32ème de finale' :
-         totalTeams >= 16 ? '16ème de finale' :
-         totalTeams >= 8 ? '4ème de finale' : 'Demi-finale',
-      3: totalTeams >= 16 ? '16ème de finale' :
-         totalTeams >= 8 ? 'Demi-finale' : 'Finale Gagnants',
-      4: totalTeams >= 8 ? 'Finale Gagnants' : 'Finale Gagnants',
-      5: 'Quart de finale',
-      6: 'Demi-finale',
-      7: 'Finale Gagnants'
+      1: 'Demi-finale des Qualifiés',
+      2: 'Finale des Qualifiés',
+      3: 'Finale des Qualifiés'
     };
     
-    return roundNames[currentRound] || `Round ${currentRound} - Gagnants`;
+    return roundNames[currentRound] || `Round ${currentRound} - Qualifiés`;
   }
 
-  // Obtenir le nom du round pour le bracket perdants
-  private static getLosersRoundName(totalTeams: number, currentRound: number): string {
-    // Pour 16 équipes au total (8 gagnants + 8 perdants)
-    if (totalTeams === 8) {
-      const roundNames: Record<number, string> = {
-        1: '8ème de finale perdants',
-        2: '4ème de finale perdants',
-        3: 'Demi-finale perdants',
-        4: 'Finale Perdants'
-      };
-      return roundNames[currentRound] || `Round ${currentRound} - Perdants`;
-    }
-    
-    // Pour d'autres tailles
+  // Obtenir le nom du round pour le bracket des éliminés
+  private static getEliminatedTeamsRoundName(totalTeams: number, currentRound: number): string {
     const roundNames: Record<number, string> = {
-      1: 'Premier tour perdants',
-      2: 'Deuxième tour perdants',
-      3: 'Troisième tour perdants',
-      4: 'Quart de finale perdants',
-      5: 'Demi-finale perdants',
-      6: 'Finale Perdants',
-      7: 'Finale Perdants'
+      1: 'Demi-finale des Éliminés',
+      2: 'Finale des Éliminés',
+      3: 'Finale des Éliminés'
     };
     
-    return roundNames[currentRound] || `Round ${currentRound} - Perdants`;
+    return roundNames[currentRound] || `Round ${currentRound} - Éliminés`;
   }
 
   // Démarrer le timer d'un match (amélioré)
@@ -1539,5 +1619,167 @@ export class TournamentService {
     }
 
     return eliminationMatches;
+  }
+
+  // NOUVELLE MÉTHODE : Générer la phase d'élimination avec deux brackets séparés
+  static async generateKnockoutStage(tournamentId: string): Promise<{ winnersMatches: IMatch[], losersMatches: IMatch[] }> {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      throw new Error('Tournoi non trouvé');
+    }
+
+    // Récupérer toutes les équipes du tournoi
+    const allTeams = await Team.find({
+      tournamentId: new mongoose.Types.ObjectId(tournamentId)
+    });
+
+    if (allTeams.length < 8) {
+      throw new Error('Pas assez d\'équipes pour commencer les phases éliminatoires (minimum 8 équipes)');
+    }
+
+    // Séparer les équipes qualifiées et éliminées
+    const qualifiedTeams = allTeams.filter(team => team.isQualified === true);
+    const eliminatedTeams = allTeams.filter(team => team.isQualified === false);
+
+    console.log(`🏆 Équipes qualifiées : ${qualifiedTeams.length}`);
+    console.log(`🥉 Équipes éliminées : ${eliminatedTeams.length}`);
+
+    const winnersMatches: IMatch[] = [];
+    const losersMatches: IMatch[] = [];
+
+    // Générer le bracket des équipes qualifiées (Demi-finale des qualifiés)
+    if (qualifiedTeams.length >= 4) {
+      const qualifiedBracket = await this.generateQualifiedTeamsBracket(tournamentId, qualifiedTeams);
+      winnersMatches.push(...qualifiedBracket);
+    }
+
+    // Générer le bracket des équipes éliminées (Demi-finale des éliminés)
+    if (eliminatedTeams.length >= 4) {
+      const eliminatedBracket = await this.generateEliminatedTeamsBracket(tournamentId, eliminatedTeams);
+      losersMatches.push(...eliminatedBracket);
+    }
+
+    return {
+      winnersMatches,
+      losersMatches
+    };
+  }
+
+  // Générer le bracket des équipes qualifiées
+  private static async generateQualifiedTeamsBracket(tournamentId: string, qualifiedTeams: ITeam[]): Promise<IMatch[]> {
+    console.log(`🏆 Génération du bracket des équipes qualifiées avec ${qualifiedTeams.length} équipes`);
+    
+    // Mélanger les équipes avec contrainte de groupes
+    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(qualifiedTeams);
+    
+    const matches: IMatch[] = [];
+    const currentRound = 1;
+
+    // Créer les matchs de demi-finale des qualifiés
+    for (let i = 0; i < shuffledTeams.length; i += 2) {
+      if (i + 1 < shuffledTeams.length) {
+        const match = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round: currentRound,
+          roundType: RoundType.KNOCKOUT,
+          team1Id: shuffledTeams[i]._id,
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: false,
+          metadata: {
+            eliminationRound: 'Demi-finale des Qualifiés',
+            team1OriginalGroup: shuffledTeams[i].originalGroup,
+            team2OriginalGroup: shuffledTeams[i + 1].originalGroup,
+            bracketType: 'winners',
+            bracketName: 'Qualifiés'
+          }
+        });
+
+        await match.save();
+        matches.push(match);
+        console.log(`✅ Match qualifiés créé : ${shuffledTeams[i].name} vs ${shuffledTeams[i + 1].name}`);
+      }
+    }
+
+    return matches;
+  }
+
+  // Générer le bracket des équipes éliminées
+  private static async generateEliminatedTeamsBracket(tournamentId: string, eliminatedTeams: ITeam[]): Promise<IMatch[]> {
+    console.log(`🥉 Génération du bracket des équipes éliminées avec ${eliminatedTeams.length} équipes`);
+    
+    // Mélanger les équipes avec contrainte de groupes
+    const shuffledTeams = this.shuffleTeamsWithGroupConstraint(eliminatedTeams);
+    
+    const matches: IMatch[] = [];
+    const currentRound = 1;
+
+    // Créer les matchs de demi-finale des éliminés
+    for (let i = 0; i < shuffledTeams.length; i += 2) {
+      if (i + 1 < shuffledTeams.length) {
+        const match = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round: currentRound,
+          roundType: RoundType.KNOCKOUT,
+          team1Id: shuffledTeams[i]._id,
+          team2Id: shuffledTeams[i + 1]._id,
+          isTimedMatch: false,
+          metadata: {
+            eliminationRound: 'Demi-finale des Éliminés',
+            team1OriginalGroup: shuffledTeams[i].originalGroup,
+            team2OriginalGroup: shuffledTeams[i + 1].originalGroup,
+            bracketType: 'losers',
+            bracketName: 'Éliminés'
+          }
+        });
+
+        await match.save();
+        matches.push(match);
+        console.log(`✅ Match éliminés créé : ${shuffledTeams[i].name} vs ${shuffledTeams[i + 1].name}`);
+      }
+    }
+
+    return matches;
+  }
+
+  // Générer le bracket des gagnants (méthode restaurée pour compatibilité)
+  private static async generateWinnersBracket(tournamentId: string, teams: mongoose.Types.ObjectId[], round: number): Promise<void> {
+    if (teams.length < 2) return;
+
+    const roundName = this.getWinnersRoundName(teams.length, round);
+    console.log(`🏆 Génération du bracket gagnants : ${roundName} avec ${teams.length} équipes`);
+
+    // Créer les matchs du bracket gagnants
+    for (let i = 0; i < teams.length; i += 2) {
+      if (i + 1 < teams.length) {
+        const match = new Match({
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          round,
+          roundType: RoundType.KNOCKOUT,
+          team1Id: teams[i],
+          team2Id: teams[i + 1],
+          isTimedMatch: false,
+          metadata: {
+            eliminationRound: roundName,
+            bracketType: 'winners',
+            previousRound: round - 1
+          }
+        });
+
+        await match.save();
+        console.log(`✅ Match gagnants créé : ${teams[i]} vs ${teams[i + 1]} (Round ${round})`);
+      }
+    }
+  }
+
+  // Obtenir le nom du round pour le bracket gagnants (méthode restaurée)
+  private static getWinnersRoundName(totalTeams: number, currentRound: number): string {
+    const roundNames: Record<number, string> = {
+      1: '8ème de finale',
+      2: '4ème de finale', 
+      3: 'Demi-finale',
+      4: 'Finale Gagnants'
+    };
+    
+    return roundNames[currentRound] || `Round ${currentRound} - Gagnants`;
   }
 } 

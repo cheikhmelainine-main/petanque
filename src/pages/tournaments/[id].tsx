@@ -563,7 +563,8 @@ const TournamentDetail: React.FC = () => {
       {hasEliminationMatches && (
         <EliminationBracket 
           tournamentId={id}
-          matches={matches.filter(m => m.roundType === 'KNOCKOUT')}
+          matches={matches.filter(m => m.roundType === 'KNOCKOUT') as any}
+          teams={teams as any}
         />
       )}
 
