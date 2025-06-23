@@ -9,8 +9,16 @@ import { useUpdateMatchScore } from '../../hooks/useApi';
 interface Match {
   _id: string;
   groupNumber?: number;
-  team1Id?: { name: string };
-  team2Id?: { name: string };
+  team1Id?: { 
+    name: string;
+    isQualified?: boolean;
+    qualificationType?: string;
+  };
+  team2Id?: { 
+    name: string;
+    isQualified?: boolean;
+    qualificationType?: string;
+  };
   team1Score?: number;
   team2Score?: number;
   status: 'PENDING' | 'ONGOING' | 'COMPLETED' | 'TIMED_OUT';
@@ -21,6 +29,49 @@ interface Match {
 interface GroupMatchesListProps {
   matches: Match[];
 }
+
+// Composant pour afficher une équipe avec bordure colorée
+const TeamDisplay: React.FC<{
+  team: { name: string; isQualified?: boolean; qualificationType?: string };
+  isWinner?: boolean;
+}> = ({ team, isWinner }) => {
+  const getBorderClass = () => {
+    if (isWinner) {
+      return 'border-green-500 bg-green-50';
+    }
+    if (team.isQualified) {
+      if (team.qualificationType === 'winners_final') {
+        return 'border-green-500 bg-green-50';
+      } else if (team.qualificationType === 'losers_final') {
+        return 'border-orange-500 bg-orange-50';
+      }
+      return 'border-green-500 bg-green-50';
+    }
+    return 'border-red-500 bg-red-50';
+  };
+
+  const getBadge = () => {
+    if (isWinner) {
+      return <Badge className="ml-2 bg-green-100 text-green-800 text-xs">Gagnant</Badge>;
+    }
+    if (team.isQualified) {
+      if (team.qualificationType === 'winners_final') {
+        return <Badge className="ml-2 bg-green-100 text-green-800 text-xs">Qualifié</Badge>;
+      } else if (team.qualificationType === 'losers_final') {
+        return <Badge className="ml-2 bg-orange-100 text-orange-800 text-xs">Éliminé</Badge>;
+      }
+      return <Badge className="ml-2 bg-green-100 text-green-800 text-xs">Qualifié</Badge>;
+    }
+    return <Badge className="ml-2 bg-red-100 text-red-800 text-xs">Éliminé</Badge>;
+  };
+
+  return (
+    <div className={`px-3 py-2 rounded-lg border-2 ${getBorderClass()} flex items-center justify-between`}>
+      <span className="font-medium text-gray-900">{team.name}</span>
+      {getBadge()}
+    </div>
+  );
+};
 
 // Composant pour saisir les scores
 const ScoreInput: React.FC<{
@@ -167,7 +218,20 @@ export const GroupMatchesList: React.FC<GroupMatchesListProps> = ({ matches }) =
                     </div>
                   </div>
                   <Badge variant="outline" className="text-xs">
-                    {groupTeams.join(' • ')}
+                    {groupTeams.map(teamName => {
+                      // Trouver l'équipe correspondante pour obtenir son statut
+                      const team = groupMatches.find(m => 
+                        m.team1Id?.name === teamName || m.team2Id?.name === teamName
+                      )?.team1Id?.name === teamName 
+                        ? groupMatches.find(m => m.team1Id?.name === teamName)?.team1Id
+                        : groupMatches.find(m => m.team2Id?.name === teamName)?.team2Id;
+                      
+                      const status = team?.isQualified 
+                        ? (team.qualificationType === 'winners_final' ? '✅' : '🥉')
+                        : '❌';
+                      
+                      return `${status} ${teamName}`;
+                    }).join(' • ')}
                   </Badge>
                 </div>
               </CardHeader>
@@ -185,13 +249,15 @@ export const GroupMatchesList: React.FC<GroupMatchesListProps> = ({ matches }) =
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-4">
-                          <span className="font-medium text-gray-900">
-                            {match.team1Id?.name || 'Équipe 1'}
-                          </span>
+                          <TeamDisplay 
+                            team={match.team1Id!} 
+                            isWinner={match.status === 'COMPLETED' && match.team1Score! > match.team2Score!}
+                          />
                           <span className="text-2xl font-bold text-gray-400">VS</span>
-                          <span className="font-medium text-gray-900">
-                            {match.team2Id?.name || 'Équipe 2'}
-                          </span>
+                          <TeamDisplay 
+                            team={match.team2Id!} 
+                            isWinner={match.status === 'COMPLETED' && match.team2Score! > match.team1Score!}
+                          />
                         </div>
                         
                         <div className="flex items-center gap-3">
